@@ -41,8 +41,7 @@ struct JournalView: View {
                                 }
                             }
                         }
-                        .listStyle(.plain)
-                        .paperBackground()
+                        .outlineList()
                     }
                 } else if model.busy {
                     ProgressView()

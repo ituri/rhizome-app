@@ -103,55 +103,51 @@ final class AppModel {
     private var clock = Clock()
     private(set) var parentMap: [String: String] = [:]
     var editingID: String?
-    private var dirty: Set<String> = []
+    var editText = ""                 // live buffer for the row being edited
     private var suppressBlur = false
-
     private var flushTask: Task<Void, Never>?
 
-    /// Live two-way binding to a node's text: edits update the local doc immediately
-    /// and stream to the server after a short debounce, so the web app sees changes
-    /// as you type (not only on Return).
-    func textBinding(_ id: String) -> Binding<String> {
+    /// Binding for the row being edited. Keystrokes update this buffer only — the
+    /// shared doc isn't mutated per keystroke, so the whole list doesn't rebuild
+    /// while you type — and the change streams to the server after a short debounce.
+    var editBinding: Binding<String> {
         Binding(
-            get: { [weak self] in self?.doc?.nodes[id]?.text ?? "" },
-            set: { [weak self] in
-                guard let self else { return }
-                self.doc?.nodes[id]?.text = $0
-                self.dirty.insert(id)
-                self.scheduleFlush(id)
-            }
+            get: { [weak self] in self?.editText ?? "" },
+            set: { [weak self] in self?.editText = $0; self?.scheduleFlush() }
         )
     }
 
-    /// Debounced streaming send while typing.
-    private func scheduleFlush(_ id: String) {
+    private func scheduleFlush() {
         flushTask?.cancel()
         flushTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard let self, !Task.isCancelled else { return }
-            self.flush(id)
+            self.flushCurrent()
         }
     }
 
-    /// Send a node's pending text immediately, if it changed since the last flush.
-    func flush(_ id: String) {
+    /// Commit the buffer into the doc + send it, if it changed.
+    func flushCurrent() {
         flushTask?.cancel()
-        guard dirty.remove(id) != nil else { return }
-        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(doc?.nodes[id]?.text ?? "")])])
+        guard let id = editingID, editText != (doc?.nodes[id]?.text ?? "") else { return }
+        doc?.nodes[id]?.text = editText
+        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(editText)])])
     }
 
     func beginEdit(_ id: String) {
-        if let prev = editingID, prev != id { flush(prev) }
+        if editingID != id { flushCurrent() }
         editingID = id
+        editText = doc?.nodes[id]?.text ?? ""
     }
 
     /// Return: save the current line, then open a fresh sibling to keep typing.
     @discardableResult
     func returnKey(on id: String) -> String? {
-        flush(id)
+        flushCurrent()
         guard let new = insertSibling(after: id) else { editingID = nil; return nil }
         suppressBlur = true      // the old field's focus loss is a transition, not a real blur
         editingID = new
+        editText = ""
         return new
     }
 
@@ -160,7 +156,7 @@ final class AppModel {
     /// The edited field lost focus (keyboard dismissed / tapped elsewhere).
     func blurred() {
         if suppressBlur { return }
-        if let id = editingID { flush(id) }
+        flushCurrent()
         editingID = nil
     }
 
@@ -203,7 +199,7 @@ final class AppModel {
     }
 
     func toggleDone(_ id: String) {
-        flush(id)
+        flushCurrent()
         guard let node = doc?.nodes[id] else { return }
         let next = !(node.done ?? false)
         doc?.nodes[id]?.done = next
@@ -252,7 +248,7 @@ final class AppModel {
 
     /// Tab: become the last child of the previous sibling.
     func indent(_ id: String) {
-        flush(id)
+        flushCurrent()
         guard let parent = parentMap[id],
               let sibs = doc?.nodes[parent]?.children,
               let idx = sibs.firstIndex(of: id), idx > 0 else { return }
@@ -261,7 +257,7 @@ final class AppModel {
 
     /// Shift-Tab: become a sibling of the parent, just after it.
     func outdent(_ id: String) {
-        flush(id)
+        flushCurrent()
         guard let parent = parentMap[id], let grand = parentMap[parent] else { return }
         let index = ((doc?.nodes[grand]?.children?.firstIndex(of: parent)) ?? -1) + 1
         move(id, to: grand, ord: index)

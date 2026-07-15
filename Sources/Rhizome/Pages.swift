@@ -77,8 +77,7 @@ struct PageView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.rzPaper)
                 }
-                .listStyle(.plain)
-                .paperBackground()
+                .outlineList()
             } else {
                 ContentUnavailableView("Page not found", systemImage: "questionmark.folder")
             }

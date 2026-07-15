@@ -28,8 +28,7 @@ struct SearchView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.rzPaper)
             }
-            .listStyle(.plain)
-            .paperBackground()
+            .outlineList()
             .overlay {
                 if query.isEmpty {
                     ContentUnavailableView("Search your graph", systemImage: "magnifyingglass")

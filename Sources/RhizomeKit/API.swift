@@ -95,8 +95,14 @@ public struct RhizomeAPI: Sendable {
 
     /// Full-text search → matching node ids (server-side FTS).
     public func search(graphID: String, query: String) async throws -> [String] {
-        let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let data = try await get("api/g/\(graphID)/search?q=\(q)")
+        // Build the query with URLComponents — appendingPathComponent would percent-
+        // encode the "?" and the server would see no query parameter.
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/g/\(graphID)/search"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "q", value: query)]
+        let data = try await send(URLRequest(url: comps.url!))
         struct Result: Decodable { let ids: [String] }
         return (try? JSONDecoder().decode(Result.self, from: data).ids) ?? []
     }

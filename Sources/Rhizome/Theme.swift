@@ -14,4 +14,12 @@ extension View {
         scrollContentBackground(.hidden)
             .background(Color.rzPaper.ignoresSafeArea())
     }
+
+    /// A tight, paper-backed plain list for outline rows (drops the ~44pt default
+    /// minimum row height so lines sit close together).
+    func outlineList() -> some View {
+        listStyle(.plain)
+            .environment(\.defaultMinListRowHeight, 8)
+            .paperBackground()
+    }
 }

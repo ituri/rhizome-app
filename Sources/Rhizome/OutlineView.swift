@@ -50,7 +50,7 @@ struct OutlineRow: View {
             .disabled(!hasChildren)
 
             if model.editingID == id {
-                TextField("", text: model.textBinding(id))
+                TextField("", text: model.editBinding)
                     .focused($focused, equals: id)
                     .submitLabel(.next)
                     .onSubmit {
@@ -68,7 +68,7 @@ struct OutlineRow: View {
                 Text(RichText.attributed(node?.text ?? "", doc: model.doc))
                     .strikethrough(isDone)
                     .foregroundStyle(isDone ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
+                    .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading) // stay tappable when empty
                     .contentShape(Rectangle())
                     .onTapGesture {
                         model.beginEdit(id)
