@@ -73,6 +73,19 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Diagnostics") {
+                    LabeledContent("Last sync") {
+                        Text(model.lastSync).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Button("Run sync self-test") {
+                        Task { await model.syncSelfTest() }
+                    }
+                    Text(model.selfTestResult)
+                        .font(.caption)
+                        .foregroundStyle(model.selfTestResult.hasPrefix("✗") ? .orange : .secondary)
+                        .textSelection(.enabled)
+                }
+
                 Section {
                     Button("Sign out", role: .destructive) {
                         Task { await model.signOut(); dismiss() }

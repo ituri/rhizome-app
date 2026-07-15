@@ -290,6 +290,34 @@ final class AppModel {
     private(set) var syncFailed = false
     var syncState: SyncState { syncFailed ? .error : ((sending || !outbox.isEmpty) ? .syncing : .synced) }
 
+    // Diagnostics (shown in Settings)
+    var lastSync = "—"
+    var selfTestResult = "not run"
+
+    /// End-to-end check of the op path through the app's own networking:
+    /// insert → update → read back → delete. Tells us whether sends actually work.
+    func syncSelfTest() async {
+        guard let api, let graphID = activeGraph?.id, let root = doc?.root else {
+            selfTestResult = "no active graph"; return
+        }
+        let id = clock.newID()
+        do {
+            let v1 = try await api.postOps(graphID: graphID, ops: [
+                Op(kind: "insert", node: id, hlc: clock.stamp(), parent: root, ord: 0, data: ["text": .string("selftest")])
+            ], device: clock.device)
+            let v2 = try await api.postOps(graphID: graphID, ops: [
+                Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string("selftest-ok")])
+            ], device: clock.device)
+            let readback = try await api.doc(graphID: graphID).doc.nodes[id]?.text ?? "∅"
+            _ = try await api.postOps(graphID: graphID, ops: [
+                Op(kind: "delete", node: id, hlc: clock.stamp(), ts: Int(Date().timeIntervalSince1970 * 1000))
+            ], device: clock.device)
+            selfTestResult = "insert v\(v1) · update v\(v2) · readback=\(readback)"
+        } catch {
+            selfTestResult = "✗ \(error)"
+        }
+    }
+
     /// Queue ops and drain the outbox in strict FIFO order — one request at a time —
     /// so an `insert` is always acked before the `update` that fills its text.
     /// (Sent concurrently, a text update can reach the server before the node exists
@@ -305,11 +333,14 @@ final class AppModel {
         let batch = outbox
         outbox.removeAll()
         let device = clock.device
+        let kinds = batch.map(\.kind).joined(separator: ",")
         Task {
             do {
                 version = try await api.postOps(graphID: graphID, ops: batch, device: device)
+                lastSync = "\(kinds) → v\(version)"
                 syncFailed = false
             } catch {
+                lastSync = "✗ \(kinds): \(error)"
                 syncFailed = true
                 await loadDoc()
                 outbox.removeAll()
