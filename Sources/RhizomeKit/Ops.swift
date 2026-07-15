@@ -52,10 +52,18 @@ public struct Clock: Sendable {
     }
 
     /// `pad(ms,13):pad(counter,5):device` — sorts after any earlier stamp.
+    /// Built without `String(format:)`: `%d` is 32-bit and would truncate the
+    /// 64-bit millisecond timestamp, producing a too-small stamp that the server
+    /// rejects (updates to existing nodes would be silently dropped).
     public mutating func stamp() -> String {
         let ms = Int(Date().timeIntervalSince1970 * 1000)
         counter = (counter + 1) % 100_000
-        return String(format: "%013d:%05d:%@", ms, counter, device)
+        return "\(Self.pad(ms, 13)):\(Self.pad(counter, 5)):\(device)"
+    }
+
+    private static func pad(_ value: Int, _ width: Int) -> String {
+        let s = String(value)
+        return s.count >= width ? s : String(repeating: "0", count: width - s.count) + s
     }
 
     public func newID() -> String {
