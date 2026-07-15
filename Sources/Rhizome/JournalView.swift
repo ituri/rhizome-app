@@ -33,8 +33,10 @@ struct JournalView: View {
                                     ForEach(visibleRows(doc, from: day.id)) { row in
                                         OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
                                             .listRowInsets(EdgeInsets(
-                                                top: 3, leading: CGFloat(row.depth) * 16 + 12, bottom: 3, trailing: 12
+                                                top: 2, leading: CGFloat(row.depth) * 16 + 12, bottom: 2, trailing: 12
                                             ))
+                                            .listRowSeparator(.hidden)
+                                            .listRowBackground(Color.rzPaper)
                                     }
                                 }
                             }
@@ -52,14 +54,12 @@ struct JournalView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showingCapture = true } label: { Image(systemName: "plus") }
+                }
                 ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
-                }
-                ToolbarItem(placement: .bottomBar) {
-                    Button { showingCapture = true } label: {
-                        Label("Capture", systemImage: "plus.circle.fill")
-                    }
                 }
                 EditingKeyboardBar(focused: $focused)
             }

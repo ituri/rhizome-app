@@ -268,24 +268,37 @@ final class AppModel {
     }
 
     enum SyncState { case synced, syncing, error }
-    private(set) var inflight = 0
+    private var outbox: [Op] = []
+    private var sending = false
     private(set) var syncFailed = false
-    var syncState: SyncState { syncFailed ? .error : (inflight > 0 ? .syncing : .synced) }
+    var syncState: SyncState { syncFailed ? .error : ((sending || !outbox.isEmpty) ? .syncing : .synced) }
 
-    /// Fire off a batch of ops; on failure, resync from the server.
+    /// Queue ops and drain the outbox in strict FIFO order — one request at a time —
+    /// so an `insert` is always acked before the `update` that fills its text.
+    /// (Sent concurrently, a text update can reach the server before the node exists
+    /// and get dropped, which is why structure synced but text didn't.)
     private func send(_ ops: [Op]) {
-        guard let api, let graphID = activeGraph?.id else { return }
+        outbox.append(contentsOf: ops)
+        drain()
+    }
+
+    private func drain() {
+        guard !sending, !outbox.isEmpty, let api, let graphID = activeGraph?.id else { return }
+        sending = true
+        let batch = outbox
+        outbox.removeAll()
         let device = clock.device
-        inflight += 1
         Task {
             do {
-                version = try await api.postOps(graphID: graphID, ops: ops, device: device)
+                version = try await api.postOps(graphID: graphID, ops: batch, device: device)
                 syncFailed = false
             } catch {
                 syncFailed = true
                 await loadDoc()
+                outbox.removeAll()
             }
-            inflight -= 1
+            sending = false
+            drain()
         }
     }
 

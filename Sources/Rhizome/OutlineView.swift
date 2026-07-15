@@ -68,7 +68,7 @@ struct OutlineRow: View {
                 Text(RichText.attributed(node?.text ?? "", doc: model.doc))
                     .strikethrough(isDone)
                     .foregroundStyle(isDone ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
                     .contentShape(Rectangle())
                     .onTapGesture {
                         model.beginEdit(id)

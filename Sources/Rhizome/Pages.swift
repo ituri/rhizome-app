@@ -24,6 +24,8 @@ struct PagesView: View {
                                 Text(RichText.attributed(doc.nodes[id]?.text ?? "", doc: doc))
                                     .lineLimit(1)
                             }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.rzPaper)
                         }
                         .listStyle(.plain)
                         .paperBackground()
@@ -39,19 +41,17 @@ struct PagesView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
-                ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
-                }
-                ToolbarItem(placement: .bottomBar) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         if let doc = model.doc {
                             _ = model.insertChild(of: doc.root)
                             Task { await model.loadDoc() }
                         }
-                    } label: {
-                        Label("New page", systemImage: "plus.circle.fill")
-                    }
+                    } label: { Image(systemName: "plus") }
+                }
+                ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
                 }
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
@@ -72,8 +72,10 @@ struct PageView: View {
                 List(visibleRows(doc, from: pageID)) { row in
                     OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
                         .listRowInsets(EdgeInsets(
-                            top: 3, leading: CGFloat(row.depth) * 16 + 12, bottom: 3, trailing: 12
+                            top: 2, leading: CGFloat(row.depth) * 16 + 12, bottom: 2, trailing: 12
                         ))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.rzPaper)
                 }
                 .listStyle(.plain)
                 .paperBackground()
@@ -84,14 +86,13 @@ struct PageView: View {
         .navigationTitle(RichText.plain(model.doc?.nodes[pageID]?.text ?? "Page", doc: model.doc))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .bottomBar) {
+            ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     if let new = model.insertChild(of: pageID) {
                         model.beginEdit(new); focused = new
                     }
-                } label: {
-                    Label("New item", systemImage: "plus.circle.fill")
-                }
+                } label: { Image(systemName: "plus") }
             }
             EditingKeyboardBar(focused: $focused)
         }
