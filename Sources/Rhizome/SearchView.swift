@@ -15,6 +15,7 @@ struct SearchView: View {
                 NavigationLink(value: id) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
+                            .font(.rz(16.5))
                             .lineLimit(2)
                         let trail = model.breadcrumb(of: id)
                         if !trail.isEmpty {

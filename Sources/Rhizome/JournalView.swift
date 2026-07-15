@@ -40,7 +40,7 @@ struct JournalView: View {
                                     }
                                 } header: {
                                     Text(day.title)
-                                        .font(.system(.title2, design: .serif).weight(.semibold))
+                                        .font(.rz(22, .semibold))
                                         .foregroundStyle(Color.rzInk)
                                         .textCase(nil)
                                         .padding(.top, 6)

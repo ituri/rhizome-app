@@ -51,6 +51,7 @@ struct OutlineRow: View {
 
             if model.editingID == id {
                 TextField("", text: model.editBinding)
+                    .font(.rz(16.5))
                     .focused($focused, equals: id)
                     .submitLabel(.next)
                     .onSubmit {
@@ -66,6 +67,7 @@ struct OutlineRow: View {
                     }
             } else {
                 Text(RichText.attributed(node?.text ?? "", doc: model.doc))
+                    .font(.rz(16.5))
                     .lineSpacing(3)
                     .strikethrough(isDone)
                     .foregroundStyle(isDone ? Color.secondary : Color.rzInk)

@@ -22,6 +22,7 @@ struct PagesView: View {
                         List(pages, id: \.self) { id in
                             NavigationLink(value: id) {
                                 Text(RichText.attributed(doc.nodes[id]?.text ?? "", doc: doc))
+                                    .font(.rz(17))
                                     .lineLimit(1)
                             }
                             .listRowSeparator(.hidden)

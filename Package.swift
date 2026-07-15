@@ -27,7 +27,8 @@ let package = Package(
         ),
         .target(
             name: "Rhizome",
-            dependencies: ["RhizomeKit"]
+            dependencies: ["RhizomeKit"],
+            resources: [.process("Resources")]
         ),
         .target(
             name: "RhizomeShare",
