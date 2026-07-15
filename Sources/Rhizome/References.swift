@@ -9,42 +9,31 @@ struct RefGroup: Identifiable {
     let refs: [String]
 }
 
-/// A backlink card: an accent stripe, the referencing text and a breadcrumb on a
-/// raised, bordered surface — tapping opens it in context.
+/// A backlink row: the referencing text + a breadcrumb, flat on the references'
+/// light-orange background (no border) — tapping opens it in context.
 struct ReferenceRow: View {
     @Environment(AppModel.self) private var model
     let id: String
 
     var body: some View {
         NavigationLink(value: model.parentOf(id) ?? id) {
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(Color.rzAccent.opacity(0.55))
-                    .frame(width: 3)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
-                        .font(.rz(15))
-                        .foregroundStyle(Color.rzInk)
-                        .lineLimit(4)
-                    let trail = model.breadcrumb(of: id)
-                    if !trail.isEmpty {
-                        Text(trail)
-                            .font(.rz(11.5))
-                            .foregroundStyle(Color.rzInkFaint)
-                            .lineLimit(1)
-                    }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
+                    .font(.rz(15))
+                    .foregroundStyle(Color.rzInk)
+                    .lineLimit(4)
+                let trail = model.breadcrumb(of: id)
+                if !trail.isEmpty {
+                    Text(trail)
+                        .font(.rz(11.5))
+                        .foregroundStyle(Color.rzInkFaint)
+                        .lineLimit(1)
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 11)
-                Spacer(minLength: 0)
             }
-            .background(Color.rzRaised)
-            .clipShape(RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.rzLine, lineWidth: 1))
         }
-        .listRowBackground(Color.rzPaper)
+        .listRowBackground(Color.rzTint)
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 14, bottom: 3, trailing: 14))
+        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 14))
     }
 }
 
@@ -99,7 +88,7 @@ private extension View {
     /// Common list-row styling for the reference labels.
     func refLabelRow(top: CGFloat) -> some View {
         self.listRowSeparator(.hidden)
-            .listRowBackground(Color.rzPaper)
-            .listRowInsets(EdgeInsets(top: top, leading: 14, bottom: 2, trailing: 14))
+            .listRowBackground(Color.rzTint)
+            .listRowInsets(EdgeInsets(top: top, leading: 16, bottom: 2, trailing: 14))
     }
 }

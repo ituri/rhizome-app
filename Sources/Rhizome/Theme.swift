@@ -14,6 +14,7 @@ extension Color {
     static let rzDone = Color(red: 0.6198, green: 0.5919, blue: 0.5616)   // --done
     static let rzRaised = Color(red: 0.9909, green: 0.9872, blue: 0.9727) // --bg-raised
     static let rzRefPage = Color(red: 0.063, green: 0.42, blue: 0.639)    // web .ref-page (#106ba3)
+    static let rzTint = Color(red: 0.953, green: 0.915, blue: 0.884)      // accent ~8% on paper (references bg)
 }
 
 extension View {
