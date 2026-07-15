@@ -72,7 +72,7 @@ struct PageView: View {
                 List(visibleRows(doc, from: pageID)) { row in
                     OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
                         .listRowInsets(EdgeInsets(
-                            top: 2, leading: CGFloat(row.depth) * 16 + 12, bottom: 2, trailing: 12
+                            top: 5, leading: CGFloat(row.depth) * 18 + 14, bottom: 5, trailing: 14
                         ))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.rzPaper)

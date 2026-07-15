@@ -25,6 +25,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        @Bindable var model = model
         NavigationStack {
             Form {
                 Section("Account") {
@@ -35,10 +36,21 @@ struct SettingsView: View {
                 }
 
                 Section("Server") {
-                    LabeledContent("URL", value: model.serverURLString)
+                    TextField("Server URL", text: $model.serverURLString)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
                     if let graph = model.activeGraph {
                         LabeledContent("Graph", value: graph.name)
                     }
+                }
+
+                Section {
+                    Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
+                } header: {
+                    Text("Capture")
+                } footer: {
+                    Text("New notes added with + are prefixed with the time, like the r command.")
                 }
 
                 if model.graphs.count > 1 {

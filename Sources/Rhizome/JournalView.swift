@@ -29,15 +29,21 @@ struct JournalView: View {
                     } else {
                         List {
                             ForEach(days) { day in
-                                Section(day.title) {
+                                Section {
                                     ForEach(visibleRows(doc, from: day.id)) { row in
                                         OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
                                             .listRowInsets(EdgeInsets(
-                                                top: 2, leading: CGFloat(row.depth) * 16 + 12, bottom: 2, trailing: 12
+                                                top: 5, leading: CGFloat(row.depth) * 18 + 14, bottom: 5, trailing: 14
                                             ))
                                             .listRowSeparator(.hidden)
                                             .listRowBackground(Color.rzPaper)
                                     }
+                                } header: {
+                                    Text(day.title)
+                                        .font(.system(.title2, design: .serif).weight(.semibold))
+                                        .foregroundStyle(Color.rzInk)
+                                        .textCase(nil)
+                                        .padding(.top, 6)
                                 }
                             }
                         }

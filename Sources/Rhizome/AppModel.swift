@@ -29,10 +29,16 @@ final class AppModel {
     var errorMessage: String?
     var busy = false
 
+    /// Prepend an `HH:mm` timestamp to captured notes, like the `r` command.
+    var captureTimestamp: Bool {
+        didSet { UserDefaults.standard.set(captureTimestamp, forKey: "captureTimestamp") }
+    }
+
     init() {
         let saved = UserDefaults.standard.string(forKey: "serverURL")
         serverURLString = saved ?? Config.serverURL.absoluteString
         activeGraphID = UserDefaults.standard.string(forKey: "activeGraphID")
+        captureTimestamp = UserDefaults.standard.object(forKey: "captureTimestamp") as? Bool ?? true
     }
 
     var api: RhizomeAPI? {
@@ -275,9 +281,19 @@ final class AppModel {
 
     /// Quick-capture into today's journal Inbox (server creates today if needed).
     func captureToday(_ text: String) async {
-        guard let api, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let api, !body.isEmpty else { return }
+        let line: String
+        if captureTimestamp {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = "HH:mm"
+            line = "\(f.string(from: Date())) \(body)"
+        } else {
+            line = body
+        }
         do {
-            try await api.capture(text)
+            try await api.capture(line)
             await loadDoc()
         } catch {
             errorMessage = String(describing: error)

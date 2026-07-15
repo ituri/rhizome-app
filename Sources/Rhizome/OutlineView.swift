@@ -66,9 +66,10 @@ struct OutlineRow: View {
                     }
             } else {
                 Text(RichText.attributed(node?.text ?? "", doc: model.doc))
+                    .lineSpacing(3)
                     .strikethrough(isDone)
-                    .foregroundStyle(isDone ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading) // stay tappable when empty
+                    .foregroundStyle(isDone ? Color.secondary : Color.rzInk)
+                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
                     .contentShape(Rectangle())
                     .onTapGesture {
                         model.beginEdit(id)
