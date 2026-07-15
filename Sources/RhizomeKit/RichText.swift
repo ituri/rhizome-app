@@ -58,7 +58,15 @@ public enum RichText {
         let name = tag.split(whereSeparator: { $0 == " " || $0 == ">" }).first.map(String.init)?.lowercased() ?? ""
         var style = stack.last!
         switch name {
-        case "a": style.link = href(in: tag).flatMap(URL.init(string:)) ?? URL(string: "about:blank")
+        case "a":
+            if let h = href(in: tag) {
+                // internal links (#/n/<id>) → a custom scheme the app intercepts to navigate
+                if h.hasPrefix("#/n/") {
+                    style.link = URL(string: "rhizome://n/\(h.dropFirst(4))")
+                } else {
+                    style.link = URL(string: h)
+                }
+            }
         case "b", "strong": style.bold = true
         case "i", "em": style.italic = true
         case "s", "strike", "del": style.strike = true
@@ -119,10 +127,17 @@ public enum RichText {
         #if canImport(SwiftUI)
         if isAccent || style.link != nil {
             piece.foregroundColor = accent
-            if let url = style.link, url.scheme?.hasPrefix("http") == true { piece.link = url }
+            if let url = style.link { piece.link = url; piece.underlineStyle = nil }
         }
         #endif
         out.append(piece)
+    }
+
+    /// The node id from an internal `rhizome://n/<id>` link, else nil.
+    public static func nodeID(from url: URL) -> String? {
+        guard url.scheme == "rhizome", url.host == "n" else { return nil }
+        let id = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
+        return id.isEmpty ? nil : id
     }
 
     // MARK: helpers

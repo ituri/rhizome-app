@@ -6,13 +6,14 @@ import RhizomeKit
 struct PagesView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSettings = false
+    @State private var path: [String] = []
 
     private func pageIDs(_ doc: RDoc) -> [String] {
         (doc.nodes[doc.root]?.children ?? []).filter { doc.nodes[$0]?.cal != "root" }
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let doc = model.doc {
                     let pages = pageIDs(doc)
@@ -58,6 +59,7 @@ struct PagesView: View {
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .refreshable { await model.loadDoc() }
         }
+        .handleNodeLinks(path: $path, model: model)
     }
 }
 

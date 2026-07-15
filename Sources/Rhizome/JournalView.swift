@@ -9,6 +9,7 @@ struct JournalView: View {
     @State private var showingCapture = false
     @State private var captureText = ""
     @State private var showingSettings = false
+    @State private var path: [String] = []
 
     private func days(_ doc: RDoc) -> [JournalDay] {
         let now = Date()
@@ -16,7 +17,7 @@ struct JournalView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if let doc = model.doc {
                     let days = days(doc)
@@ -83,6 +84,7 @@ struct JournalView: View {
             .onChange(of: focused) { _, new in if new == nil { model.blurred() } }
             .refreshable { await model.loadDoc() }
         }
+        .handleNodeLinks(path: $path, model: model)
     }
 
 }

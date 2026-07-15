@@ -8,9 +8,10 @@ struct SearchView: View {
     @Environment(AppModel.self) private var model
     @State private var query = ""
     @State private var results: [String] = []
+    @State private var path: [String] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List(results, id: \.self) { id in
                 NavigationLink(value: model.parentOf(id) ?? id) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -42,6 +43,7 @@ struct SearchView: View {
             .navigationDestination(for: String.self) { PageView(pageID: $0) }
         }
         .searchable(text: $query, prompt: "Search notes")
+        .handleNodeLinks(path: $path, model: model)
         .task(id: query) {
             try? await Task.sleep(nanoseconds: 250_000_000)   // debounce
             guard !Task.isCancelled else { return }
