@@ -22,19 +22,43 @@ Point it at a different server by editing `Config.serverURL` in
 
 ## Prerequisites
 
-- A Swift 6 toolchain (`swift --version`).
+- A Swift 6.3 toolchain (`swift --version`).
 - xtool installed — see xtool's *Installation* guide for
   [Linux](https://github.com/xtool-org/xtool/blob/main/Documentation/xtool.docc/Installation-Linux.md)
   or [macOS](https://github.com/xtool-org/xtool/blob/main/Documentation/xtool.docc/Installation-macOS.md).
 - An Apple ID for signing (xtool handles the free 7-day personal-team signing;
   a paid Apple Developer account gives a 1-year profile and lets you ship via
   TestFlight / the App Store).
+- **Xcode 26 `.xip`** downloaded from
+  [Apple](https://developer.apple.com/download/all/?q=Xcode) — xtool extracts it
+  to generate the iOS Swift SDK. This is the one piece Apple gates behind an
+  Apple ID; it can't be scripted.
+
+## Environment already set up on this Linux (Arch) box
+
+The toolchain is installed and on `PATH` (in fish, via `~/.config/fish/conf.d/swift.fish`):
+
+- **xtool 1.17** — AppImage at `~/.local/bin/xtool`.
+- **Swift 6.3.3** — installed with [swiftly](https://www.swift.org/swiftly/) in
+  user space (`swiftly install 6.3.3`, initialised with `--platform ubuntu24.04`
+  because Arch isn't auto-detected).
+- **libncurses shim** — Arch ships `libncursesw.so.6` but the Swift Ubuntu build
+  wants `libncurses.so.6`, so there's a symlink at
+  `…/swiftly/toolchains/6.3.3/usr/lib/swift/linux/libncurses.so.6 → /usr/lib/libncursesw.so.6`
+  (on the toolchain RUNPATH, so no global `LD_LIBRARY_PATH` is needed).
+  ⚠️ If you reinstall/upgrade the 6.3.3 toolchain, recreate this symlink.
+
+**Remaining, Apple-gated steps (need your Apple ID):** see *Build & run* below.
+To deploy onto a physical iPhone from Linux you also need `usbmuxd`
+(`sudo pacman -S usbmuxd`) and the phone plugged in + trusted — Linux has no iOS
+Simulator, so a real device (or a Mac) is required to actually run it.
 
 ## Build & run
 
 ```sh
-xtool setup          # one-time: authenticate + install the iOS SDK
-xtool dev            # build, install and launch on a connected device / simulator
+xtool setup          # one-time: Apple ID auth + build the iOS SDK from your Xcode.xip
+cd ~/dev/rhizome-app
+xtool dev            # build, install and launch on a connected iPhone
 xtool build          # just produce a .ipa
 ```
 
