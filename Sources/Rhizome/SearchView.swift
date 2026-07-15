@@ -12,7 +12,7 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             List(results, id: \.self) { id in
-                NavigationLink(value: id) {
+                NavigationLink(value: model.parentOf(id) ?? id) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
                             .font(.rz(16.5))
@@ -39,9 +39,7 @@ struct SearchView: View {
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: String.self) { id in
-                PageView(pageID: model.parentOf(id) ?? id)
-            }
+            .navigationDestination(for: String.self) { PageView(pageID: $0) }
         }
         .searchable(text: $query, prompt: "Search notes")
         .task(id: query) {

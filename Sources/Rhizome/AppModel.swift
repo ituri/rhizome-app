@@ -183,6 +183,28 @@ final class AppModel {
         return (try? await api.search(graphID: graphID, query: query)) ?? []
     }
 
+    /// Node ids whose text links to `pageID` (Roam-style backlinks). Links are
+    /// stored as `<a href="#/n/<id>">…</a>`.
+    func linkedReferences(to pageID: String) -> [String] {
+        guard let doc else { return [] }
+        let needle = "#/n/\(pageID)"
+        return doc.nodes.compactMap { id, node in
+            (id != pageID && (node.text?.contains(needle) ?? false)) ? id : nil
+        }.sorted()
+    }
+
+    /// Node ids whose plain text mentions the page's name but don't link to it.
+    func unlinkedReferences(to pageID: String) -> [String] {
+        guard let doc, let raw = doc.nodes[pageID]?.text else { return [] }
+        let name = RichText.plain(raw, doc: doc).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard name.count >= 3 else { return [] }
+        let linkNeedle = "#/n/\(pageID)"
+        return doc.nodes.compactMap { id, node -> String? in
+            guard id != pageID, let t = node.text, !t.contains(linkNeedle) else { return nil }
+            return RichText.plain(t, doc: doc).lowercased().contains(name) ? id : nil
+        }.sorted()
+    }
+
     /// A " › "-joined trail of ancestor texts, for search-result context.
     func breadcrumb(of id: String) -> String {
         var trail: [String] = []
