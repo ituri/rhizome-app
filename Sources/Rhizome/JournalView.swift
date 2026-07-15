@@ -40,6 +40,7 @@ struct JournalView: View {
                             }
                         }
                         .listStyle(.plain)
+                        .paperBackground()
                     }
                 } else if model.busy {
                     ProgressView()

@@ -8,6 +8,8 @@ struct RhizomeApp: App {
         WindowGroup {
             ContentView()
                 .environment(model)
+                .tint(.rzAccent)
+                .preferredColorScheme(.light)
                 .task { await model.bootstrap() }
         }
     }

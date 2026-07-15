@@ -35,6 +35,7 @@ struct SignInView: View {
                 }
                 .disabled(model.busy || username.isEmpty || password.isEmpty)
             }
+            .paperBackground()
             .navigationTitle("Rhizome")
         }
     }

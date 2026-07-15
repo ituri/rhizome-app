@@ -79,6 +79,7 @@ struct SettingsView: View {
                     }
                 }
             }
+            .paperBackground()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

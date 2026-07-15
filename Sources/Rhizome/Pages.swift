@@ -26,6 +26,7 @@ struct PagesView: View {
                             }
                         }
                         .listStyle(.plain)
+                        .paperBackground()
                         .navigationDestination(for: String.self) { PageView(pageID: $0) }
                     }
                 } else if model.busy {
@@ -75,6 +76,7 @@ struct PageView: View {
                         ))
                 }
                 .listStyle(.plain)
+                .paperBackground()
             } else {
                 ContentUnavailableView("Page not found", systemImage: "questionmark.folder")
             }
