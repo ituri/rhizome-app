@@ -66,7 +66,7 @@ struct JournalView: View {
                 }
                 Button("Cancel", role: .cancel) { captureText = "" }
             }
-            .onChange(of: focused) { _, new in if new == nil { model.commitEdit() } }
+            .onChange(of: focused) { _, new in if new == nil { model.blurred() } }
             .refreshable { await model.loadDoc() }
         }
     }

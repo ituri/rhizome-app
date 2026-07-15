@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "Rhizome",
     platforms: [
-        .iOS(.v18),
+        .iOS("26.0"),   // stamps the binary's LC_BUILD_VERSION sdk = 26 → Liquid Glass tab bar
         .macOS(.v15),
     ],
     products: [

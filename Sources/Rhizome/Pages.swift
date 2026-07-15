@@ -88,6 +88,6 @@ struct PageView: View {
             }
             EditingKeyboardBar(focused: $focused)
         }
-        .onChange(of: focused) { _, new in if new == nil { model.commitEdit() } }
+        .onChange(of: focused) { _, new in if new == nil { model.blurred() } }
     }
 }

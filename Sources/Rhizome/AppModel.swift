@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 import RhizomeKit
 
 /// Observable app state: server URL, the signed-in user, their graphs, and the
@@ -102,7 +103,48 @@ final class AppModel {
     private var clock = Clock()
     private(set) var parentMap: [String: String] = [:]
     var editingID: String?
-    var editBuffer = ""
+    private var dirty: Set<String> = []
+    private var suppressBlur = false
+
+    /// Live two-way binding to a node's text: edits update the local doc immediately
+    /// (so the phone shows them at once); the op is sent when the edit is *flushed*
+    /// — on Return, on blur, or before any structural action.
+    func textBinding(_ id: String) -> Binding<String> {
+        Binding(
+            get: { [weak self] in self?.doc?.nodes[id]?.text ?? "" },
+            set: { [weak self] in self?.doc?.nodes[id]?.text = $0; self?.dirty.insert(id) }
+        )
+    }
+
+    /// Send a node's pending text if it changed since the last flush.
+    func flush(_ id: String) {
+        guard dirty.remove(id) != nil else { return }
+        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(doc?.nodes[id]?.text ?? "")])])
+    }
+
+    func beginEdit(_ id: String) {
+        if let prev = editingID, prev != id { flush(prev) }
+        editingID = id
+    }
+
+    /// Return: save the current line, then open a fresh sibling to keep typing.
+    @discardableResult
+    func returnKey(on id: String) -> String? {
+        flush(id)
+        guard let new = insertSibling(after: id) else { editingID = nil; return nil }
+        suppressBlur = true      // the old field's focus loss is a transition, not a real blur
+        editingID = new
+        return new
+    }
+
+    func focusSettled() { suppressBlur = false }
+
+    /// The edited field lost focus (keyboard dismissed / tapped elsewhere).
+    func blurred() {
+        if suppressBlur { return }
+        if let id = editingID { flush(id) }
+        editingID = nil
+    }
 
     func reindex() {
         var map: [String: String] = [:]
@@ -122,27 +164,11 @@ final class AppModel {
     }
 
     func toggleDone(_ id: String) {
+        flush(id)
         guard let node = doc?.nodes[id] else { return }
         let next = !(node.done ?? false)
         doc?.nodes[id]?.done = next
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["done": .bool(next)])])
-    }
-
-    /// Start editing a node (committing any in-flight edit first).
-    func beginEdit(_ id: String) {
-        commitEdit()
-        editingID = id
-        editBuffer = doc?.nodes[id]?.text ?? ""
-    }
-
-    /// Persist the buffered text of the row being edited, if it changed.
-    func commitEdit() {
-        guard let id = editingID else { return }
-        if editBuffer != (doc?.nodes[id]?.text ?? "") {
-            doc?.nodes[id]?.text = editBuffer
-            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(editBuffer)])])
-        }
-        editingID = nil
     }
 
     /// Insert a new empty sibling after `id`; returns its id (to focus it).
@@ -187,6 +213,7 @@ final class AppModel {
 
     /// Tab: become the last child of the previous sibling.
     func indent(_ id: String) {
+        flush(id)
         guard let parent = parentMap[id],
               let sibs = doc?.nodes[parent]?.children,
               let idx = sibs.firstIndex(of: id), idx > 0 else { return }
@@ -195,6 +222,7 @@ final class AppModel {
 
     /// Shift-Tab: become a sibling of the parent, just after it.
     func outdent(_ id: String) {
+        flush(id)
         guard let parent = parentMap[id], let grand = parentMap[parent] else { return }
         let index = ((doc?.nodes[grand]?.children?.firstIndex(of: parent)) ?? -1) + 1
         move(id, to: grand, ord: index)

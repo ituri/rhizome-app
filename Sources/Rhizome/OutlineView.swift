@@ -37,7 +37,6 @@ struct OutlineRow: View {
     private var isDone: Bool { node?.done ?? false }
 
     var body: some View {
-        @Bindable var model = model
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Button {
                 if hasChildren { model.toggleCollapse(id) }
@@ -51,14 +50,17 @@ struct OutlineRow: View {
             .disabled(!hasChildren)
 
             if model.editingID == id {
-                TextField("", text: $model.editBuffer)
+                TextField("", text: model.textBinding(id))
                     .focused($focused, equals: id)
                     .submitLabel(.next)
                     .onSubmit {
-                        model.commitEdit()
-                        if let next = model.insertSibling(after: id) {
-                            model.beginEdit(next)
-                            focused = next
+                        if let next = model.returnKey(on: id) {
+                            DispatchQueue.main.async {
+                                focused = next
+                                model.focusSettled()
+                            }
+                        } else {
+                            focused = nil
                         }
                     }
             } else {
@@ -104,7 +106,7 @@ struct EditingKeyboardBar: ToolbarContent {
                 Image(systemName: "checkmark.circle")
             }
             Spacer()
-            Button("Done") { model.commitEdit(); focused = nil }
+            Button("Done") { focused = nil }
         }
     }
 }
