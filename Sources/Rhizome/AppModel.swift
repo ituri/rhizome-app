@@ -106,18 +106,36 @@ final class AppModel {
     private var dirty: Set<String> = []
     private var suppressBlur = false
 
+    private var flushTask: Task<Void, Never>?
+
     /// Live two-way binding to a node's text: edits update the local doc immediately
-    /// (so the phone shows them at once); the op is sent when the edit is *flushed*
-    /// — on Return, on blur, or before any structural action.
+    /// and stream to the server after a short debounce, so the web app sees changes
+    /// as you type (not only on Return).
     func textBinding(_ id: String) -> Binding<String> {
         Binding(
             get: { [weak self] in self?.doc?.nodes[id]?.text ?? "" },
-            set: { [weak self] in self?.doc?.nodes[id]?.text = $0; self?.dirty.insert(id) }
+            set: { [weak self] in
+                guard let self else { return }
+                self.doc?.nodes[id]?.text = $0
+                self.dirty.insert(id)
+                self.scheduleFlush(id)
+            }
         )
     }
 
-    /// Send a node's pending text if it changed since the last flush.
+    /// Debounced streaming send while typing.
+    private func scheduleFlush(_ id: String) {
+        flushTask?.cancel()
+        flushTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.flush(id)
+        }
+    }
+
+    /// Send a node's pending text immediately, if it changed since the last flush.
     func flush(_ id: String) {
+        flushTask?.cancel()
         guard dirty.remove(id) != nil else { return }
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(doc?.nodes[id]?.text ?? "")])])
     }
@@ -249,16 +267,25 @@ final class AppModel {
         }
     }
 
+    enum SyncState { case synced, syncing, error }
+    private(set) var inflight = 0
+    private(set) var syncFailed = false
+    var syncState: SyncState { syncFailed ? .error : (inflight > 0 ? .syncing : .synced) }
+
     /// Fire off a batch of ops; on failure, resync from the server.
     private func send(_ ops: [Op]) {
         guard let api, let graphID = activeGraph?.id else { return }
         let device = clock.device
+        inflight += 1
         Task {
             do {
                 version = try await api.postOps(graphID: graphID, ops: ops, device: device)
+                syncFailed = false
             } catch {
+                syncFailed = true
                 await loadDoc()
             }
+            inflight -= 1
         }
     }
 

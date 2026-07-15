@@ -55,7 +55,8 @@ struct OutlineRow: View {
                     .submitLabel(.next)
                     .onSubmit {
                         if let next = model.returnKey(on: id) {
-                            DispatchQueue.main.async {
+                            // let the List render the new row before we focus it
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                 focused = next
                                 model.focusSettled()
                             }

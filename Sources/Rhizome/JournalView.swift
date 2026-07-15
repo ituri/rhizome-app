@@ -8,6 +8,7 @@ struct JournalView: View {
     @FocusState private var focused: String?
     @State private var showingCapture = false
     @State private var captureText = ""
+    @State private var showingSettings = false
 
     private func days(_ doc: RDoc) -> [JournalDay] {
         let now = Date()
@@ -50,7 +51,10 @@ struct JournalView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
-                ToolbarItem(placement: .topBarTrailing) { AccountMenu() }
+                ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                }
                 ToolbarItem(placement: .bottomBar) {
                     Button { showingCapture = true } label: {
                         Label("Capture", systemImage: "plus.circle.fill")
@@ -58,6 +62,7 @@ struct JournalView: View {
                 }
                 EditingKeyboardBar(focused: $focused)
             }
+            .sheet(isPresented: $showingSettings) { SettingsView() }
             .alert("Capture to today", isPresented: $showingCapture) {
                 TextField("Note", text: $captureText)
                 Button("Add") {

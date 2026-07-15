@@ -5,6 +5,7 @@ import RhizomeKit
 /// opening into its own outline — mirroring the web app's "All pages".
 struct PagesView: View {
     @Environment(AppModel.self) private var model
+    @State private var showingSettings = false
 
     private func pageIDs(_ doc: RDoc) -> [String] {
         (doc.nodes[doc.root]?.children ?? []).filter { doc.nodes[$0]?.cal != "root" }
@@ -37,7 +38,10 @@ struct PagesView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
-                ToolbarItem(placement: .topBarTrailing) { AccountMenu() }
+                ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                }
                 ToolbarItem(placement: .bottomBar) {
                     Button {
                         if let doc = model.doc {
@@ -49,6 +53,7 @@ struct PagesView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showingSettings) { SettingsView() }
             .refreshable { await model.loadDoc() }
         }
     }
