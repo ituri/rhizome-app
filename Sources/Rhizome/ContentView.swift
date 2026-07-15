@@ -14,7 +14,12 @@ struct ContentView: View {
         case .signedOut:
             SignInView()
         case .ready:
-            OutlineView()
+            TabView {
+                JournalView()
+                    .tabItem { Label("Journal", systemImage: "calendar") }
+                OutlineView()
+                    .tabItem { Label("Outline", systemImage: "list.bullet.indent") }
+            }
         }
     }
 }

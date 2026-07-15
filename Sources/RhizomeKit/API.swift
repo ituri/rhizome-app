@@ -27,6 +27,15 @@ public struct RNode: Codable, Sendable {
     public var children: [String]?
     public var collapsed: Bool?
     public var done: Bool?
+    public var cal: String?   // "root" | "year" | "month" | "day" on calendar nodes
+
+    public init(
+        text: String? = nil, note: String? = nil, children: [String]? = nil,
+        collapsed: Bool? = nil, done: Bool? = nil, cal: String? = nil
+    ) {
+        self.text = text; self.note = note; self.children = children
+        self.collapsed = collapsed; self.done = done; self.cal = cal
+    }
 }
 
 public struct RDoc: Codable, Sendable {
@@ -73,6 +82,25 @@ public struct RhizomeAPI: Sendable {
     public func doc(graphID: String) async throws -> RDocResponse {
         let data = try await get("api/g/\(graphID)/doc")
         return try JSONDecoder().decode(RDocResponse.self, from: data)
+    }
+
+    /// Send a batch of mutation ops; returns the new server version.
+    @discardableResult
+    public func postOps(graphID: String, ops: [Op], device: String) async throws -> Int {
+        struct Body: Encodable { let ops: [Op]; let device: String }
+        struct Version: Decodable { let version: Int }
+        let data = try await post("api/g/\(graphID)/ops", body: Body(ops: ops, device: device))
+        return (try? JSONDecoder().decode(Version.self, from: data).version) ?? 0
+    }
+
+    /// Quick-capture a line into today's journal Inbox (the server creates the day
+    /// node if needed). Uses the current session.
+    public func capture(_ text: String) async throws {
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/capture"))
+        request.httpMethod = "POST"
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(text.utf8)
+        _ = try await send(request)
     }
 
     // MARK: request plumbing
