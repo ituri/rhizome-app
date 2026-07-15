@@ -11,9 +11,9 @@ public enum Config {
     /// git-ignored so the key never lands in version control.
     public static var captureToken: String { Secrets.captureToken }
 
-    /// The app's paper background, matching the web theme (#f4f1ea).
-    public static let background = (red: 0.957, green: 0.945, blue: 0.918)
+    /// The app's paper background — the web `--bg` (#f7f5f0).
+    public static let background = (red: 0.9712, green: 0.9647, blue: 0.9447)
 
-    /// The accent (links, tags, bullets) — the web theme's #c2563a.
-    public static let accent = (red: 0.760, green: 0.337, blue: 0.227)
+    /// The accent (links, tags) — the web `--accent` (#bf562f).
+    public static let accent = (red: 0.7499, green: 0.3389, blue: 0.1866)
 }

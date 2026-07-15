@@ -43,7 +43,7 @@ struct OutlineRow: View {
             } label: {
                 Image(systemName: hasChildren ? (isCollapsed ? "chevron.right" : "chevron.down") : "circle.fill")
                     .font(.system(size: hasChildren ? 11 : 5, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.rzInkFaint)
                     .frame(width: 14)
             }
             .buttonStyle(.plain)
@@ -70,7 +70,7 @@ struct OutlineRow: View {
                     .font(.rz(16.5))
                     .lineSpacing(3)
                     .strikethrough(isDone)
-                    .foregroundStyle(isDone ? Color.secondary : Color.rzInk)
+                    .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
                     .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
                     .contentShape(Rectangle())
                     .onTapGesture {

@@ -58,6 +58,7 @@ struct JournalView: View {
             }
             .navigationTitle("Journal")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: String.self) { PageView(pageID: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
                 ToolbarItem(placement: .topBarLeading) {

@@ -1,11 +1,17 @@
 import SwiftUI
 import RhizomeKit
 
-/// The web app's palette: a warm paper background, dark ink, terracotta accent.
+/// The web app's light-theme palette (oklch tokens converted to sRGB).
 extension Color {
     static let rzPaper = Color(red: Config.background.red, green: Config.background.green, blue: Config.background.blue)
     static let rzAccent = Color(red: Config.accent.red, green: Config.accent.green, blue: Config.accent.blue)
-    static let rzInk = Color(red: 0.17, green: 0.16, blue: 0.14)
+    static let rzInk = Color(red: 0.1847, green: 0.14, blue: 0.1105)      // --ink
+    static let rzInkSoft = Color(red: 0.3926, green: 0.3455, blue: 0.315) // --ink-soft
+    static let rzInkFaint = Color(red: 0.5795, green: 0.5415, blue: 0.5124) // --ink-faint
+    static let rzLine = Color(red: 0.8741, green: 0.8549, blue: 0.8238)   // --line
+    static let rzLineSoft = Color(red: 0.9144, green: 0.9011, blue: 0.8739) // --line-soft
+    static let rzMention = Color(red: 0.2177, green: 0.4244, blue: 0.6278) // --mention
+    static let rzDone = Color(red: 0.6198, green: 0.5919, blue: 0.5616)   // --done
 }
 
 extension View {
