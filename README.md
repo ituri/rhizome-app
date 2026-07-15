@@ -90,12 +90,24 @@ Sources/RhizomeShare/             the Share Extension
 ## Native quick-capture (Share Extension)
 
 Share text or a link from any app → **Rhizome Inbox** and it lands under today's
-journal (time-stamped, exactly like the `r` shell command). To enable it, paste a
-**write-scoped `rzk_…` API key** into `Config.captureToken`
-(`Sources/RhizomeKit/Config.swift`) — create one in the web app under
-*Account → API keys* — then rebuild. Until a key is set, the extension's *Post*
-button stays disabled. (The key is compiled in for now; a Settings screen + a
-shared App Group is the planned hardening — see the roadmap.)
+journal (time-stamped, exactly like the `r` shell command). To enable it, put a
+**write-scoped `rzk_…` API key** (create one in the web app under *Account → API
+keys*) into `Sources/RhizomeKit/Secrets.swift`:
+
+```swift
+static let captureToken = "rzk_…"
+```
+
+`Secrets.swift` is committed empty and kept out of version control locally with:
+
+```sh
+git update-index --skip-worktree Sources/RhizomeKit/Secrets.swift
+```
+
+so your key stays on your machine (undo with `--no-skip-worktree`). Rebuild after
+editing. Until a key is set, the extension's *Post* button stays disabled. (The
+key is compiled in for now; a Settings screen + a shared App Group is the planned
+hardening — see the roadmap.)
 
 ## Roadmap
 
