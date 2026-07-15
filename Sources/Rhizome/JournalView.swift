@@ -1,22 +1,29 @@
 import SwiftUI
 import RhizomeKit
 
-/// Daily notes, most recent day first — the native counterpart to the web app's
-/// journal. Each day is a section of its (editable) notes.
+/// Daily notes, most recent day first (future days hidden, like the web app).
+/// Each day is a section of its (editable) notes; the + quick-captures into today.
 struct JournalView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focused: String?
+    @State private var showingCapture = false
+    @State private var captureText = ""
+
+    private func days(_ doc: RDoc) -> [JournalDay] {
+        let now = Date()
+        return Journal.days(doc).filter { $0.date <= now }
+    }
 
     var body: some View {
         NavigationStack {
             Group {
                 if let doc = model.doc {
-                    let days = Journal.days(doc)
+                    let days = days(doc)
                     if days.isEmpty {
                         ContentUnavailableView(
                             "No daily notes yet",
                             systemImage: "calendar",
-                            description: Text("Capture something with the share sheet or the `r` command, then pull to refresh.")
+                            description: Text("Tap + to capture your first note into today.")
                         )
                     } else {
                         List {
@@ -45,17 +52,19 @@ struct JournalView: View {
                 ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
                 ToolbarItem(placement: .topBarTrailing) { AccountMenu() }
                 ToolbarItem(placement: .bottomBar) {
-                    Button {
-                        if let today = model.doc.map(Journal.days)?.first,
-                           let new = model.insertChild(of: today.id) {
-                            model.beginEdit(new); focused = new
-                        }
-                    } label: {
-                        Label("New note", systemImage: "plus.circle.fill")
+                    Button { showingCapture = true } label: {
+                        Label("Capture", systemImage: "plus.circle.fill")
                     }
-                    .disabled(model.doc.map(Journal.days)?.isEmpty ?? true)
                 }
                 EditingKeyboardBar(focused: $focused)
+            }
+            .alert("Capture to today", isPresented: $showingCapture) {
+                TextField("Note", text: $captureText)
+                Button("Add") {
+                    let text = captureText; captureText = ""
+                    Task { await model.captureToday(text) }
+                }
+                Button("Cancel", role: .cancel) { captureText = "" }
             }
             .onChange(of: focused) { _, new in if new == nil { model.commitEdit() } }
             .refreshable { await model.loadDoc() }

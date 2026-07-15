@@ -12,14 +12,18 @@ no embedded browser. Current state:
 
 - **Native sign-in** (server URL + username/password → a Rhizome session cookie,
   persisted so relaunches resume silently).
-- **Native outline view** — the graph is fetched from the API and rendered as an
-  indented SwiftUI list with collapse/expand and done styling. Multi-graph
-  switcher + reload + sign-out in the toolbar.
+- **Journal + Outline tabs.** *Journal* shows daily notes grouped by day (most
+  recent first, parsed from the calendar nodes); *Outline* shows the whole graph.
+- **Rich rendering** — Markdown (**bold**, *italic*, `code`, links) plus Rhizome
+  `[[page links]]`, `#tags` and `((block references))`, resolved and styled.
+- **Editing** — tap a row to edit inline; Return splits into a new sibling; `+`
+  adds a note (to today in Journal, to the page in Outline); swipe to complete or
+  delete; the keyboard bar indents / outdents; collapse + done persist. Edits post
+  Route-B ops to `/api/g/:id/ops` (optimistic, re-synced on failure).
 - A **Share Extension** for quick-capture into the Inbox (see below).
 
-**In progress** (the tree renders read-only for now): inline text editing and
-structural ops (enter / tab / move / delete → `/api/g/:id/ops`), live SSE sync,
-and rich rendering of `[[links]]` / `#tags` / attributes. See the roadmap.
+**Next:** live SSE sync, zoom/navigation into pages, richer text editing (multi-
+line), offline queueing. See the roadmap.
 
 The server URL is set on the sign-in screen (defaults to `Config.serverURL`).
 

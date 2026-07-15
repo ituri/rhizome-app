@@ -87,7 +87,7 @@ struct OutlineRow: View {
     }
 }
 
-/// Keyboard accessory shared by both editing lists: indent / outdent / done / dismiss.
+/// Keyboard accessory shared by the editing lists: indent / outdent / done / dismiss.
 struct EditingKeyboardBar: ToolbarContent {
     @Environment(AppModel.self) private var model
     @FocusState.Binding var focused: String?
@@ -105,50 +105,6 @@ struct EditingKeyboardBar: ToolbarContent {
             }
             Spacer()
             Button("Done") { model.commitEdit(); focused = nil }
-        }
-    }
-}
-
-/// The Outline tab: the whole graph as an indented, editable list.
-struct OutlineView: View {
-    @Environment(AppModel.self) private var model
-    @FocusState private var focused: String?
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if let doc = model.doc {
-                    List(visibleRows(doc)) { row in
-                        OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
-                            .listRowInsets(EdgeInsets(
-                                top: 3, leading: CGFloat(row.depth) * 16 + 12, bottom: 3, trailing: 12
-                            ))
-                    }
-                    .listStyle(.plain)
-                } else if model.busy {
-                    ProgressView()
-                } else {
-                    ContentUnavailableView("No outline", systemImage: "leaf")
-                }
-            }
-            .navigationTitle(model.activeGraph?.name ?? "Rhizome")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
-                ToolbarItem(placement: .topBarTrailing) { AccountMenu() }
-                ToolbarItem(placement: .bottomBar) {
-                    Button {
-                        if let doc = model.doc, let new = model.insertChild(of: doc.root) {
-                            model.beginEdit(new); focused = new
-                        }
-                    } label: {
-                        Label("New item", systemImage: "plus.circle.fill")
-                    }
-                }
-                EditingKeyboardBar(focused: $focused)
-            }
-            .onChange(of: focused) { _, new in if new == nil { model.commitEdit() } }
-            .refreshable { await model.loadDoc() }
         }
     }
 }

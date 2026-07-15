@@ -15,10 +15,8 @@ struct ContentView: View {
             SignInView()
         case .ready:
             TabView {
-                JournalView()
-                    .tabItem { Label("Journal", systemImage: "calendar") }
-                OutlineView()
-                    .tabItem { Label("Outline", systemImage: "list.bullet.indent") }
+                Tab("Journal", systemImage: "calendar") { JournalView() }
+                Tab("Pages", systemImage: "doc.text") { PagesView() }
             }
         }
     }
