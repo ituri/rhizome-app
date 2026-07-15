@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import Network
 import RhizomeKit
 
 /// Observable app state: server URL, the signed-in user, their graphs, and the
@@ -54,6 +55,7 @@ final class AppModel {
 
     /// On launch: if a session cookie is still valid, resume straight into the outline.
     func bootstrap() async {
+        startNetworkMonitor()
         guard let api else { phase = .signedOut; return }
         do {
             let me = try await api.me()
@@ -538,5 +540,25 @@ final class AppModel {
         guard user != nil else { return }
         startEvents()
         Task { await loadDoc() }
+    }
+
+    // MARK: - Network monitor (instant reconnect)
+
+    private var netMonitor: NWPathMonitor?
+
+    func startNetworkMonitor() {
+        guard netMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        netMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                guard let self, self.user != nil else { return }
+                if path.status == .satisfied, self.isOffline {
+                    self.startEvents()          // resubscribe
+                    await self.loadDoc()        // refresh + drain the offline queue
+                }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "rhizome.net"))
     }
 }
