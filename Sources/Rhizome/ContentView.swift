@@ -1,4 +1,5 @@
 import SwiftUI
+import RhizomeKit
 
 struct ContentView: View {
     @State private var isLoading = true

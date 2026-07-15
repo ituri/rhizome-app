@@ -1,6 +1,7 @@
 #if os(iOS)
 import SwiftUI
 import WebKit
+import RhizomeKit
 
 /// A WKWebView wrapper around the Rhizome PWA. Uses the default (persistent) data
 /// store so the login session, cookies and the app's IndexedDB offline cache all

@@ -9,15 +9,29 @@ let package = Package(
         .macOS(.v14),
     ],
     products: [
-        // An xtool project contains exactly one library product, representing the main app.
+        // The main app.
         .library(
             name: "Rhizome",
             targets: ["Rhizome"]
         ),
+        // The Share Extension (native quick-capture).
+        .library(
+            name: "RhizomeShare",
+            targets: ["RhizomeShare"]
+        ),
     ],
     targets: [
+        // Shared config + capture client, used by both the app and the extension.
         .target(
-            name: "Rhizome"
+            name: "RhizomeKit"
+        ),
+        .target(
+            name: "Rhizome",
+            dependencies: ["RhizomeKit"]
+        ),
+        .target(
+            name: "RhizomeShare",
+            dependencies: ["RhizomeKit"]
         ),
     ]
 )

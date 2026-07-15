@@ -62,27 +62,45 @@ xtool dev            # build, install and launch on a connected iPhone
 xtool build          # just produce a .ipa
 ```
 
-The project layout is the standard xtool template:
+Project layout:
 
 ```
-Package.swift                     SwiftPM manifest (one library product = the app)
-xtool.yml                         xtool manifest (bundle ID: org.syslinx.rhizome)
+Package.swift                     SwiftPM manifest (app + Share Extension products)
+xtool.yml                         xtool manifest (bundle ID, icon, extensions)
+Icon.png                          1024×1024 app icon (rendered from the web sprout)
+RhizomeShare-Info.plist           Share Extension Info.plist (share-services)
 .sourcekit-lsp/config.json        LSP → iOS SDK, for editor support
-Sources/Rhizome/
+Sources/RhizomeKit/               shared by the app + extension
+  Config.swift                    server URL, capture token, theme
+  Capture.swift                   POSTs a line to /api/capture (like the `r` command)
+Sources/Rhizome/                  the app
   RhizomeApp.swift                @main App entry point
   ContentView.swift               root view (hosts the web view + loading state)
   WebView.swift                   UIViewRepresentable around WKWebView (iOS only)
-  Config.swift                    server URL + theme
+Sources/RhizomeShare/             the Share Extension
+  ShareViewController.swift       compose sheet → quick-capture into the Inbox
 ```
+
+## Native quick-capture (Share Extension)
+
+Share text or a link from any app → **Rhizome Inbox** and it lands under today's
+journal (time-stamped, exactly like the `r` shell command). To enable it, paste a
+**write-scoped `rzk_…` API key** into `Config.captureToken`
+(`Sources/RhizomeKit/Config.swift`) — create one in the web app under
+*Account → API keys* — then rebuild. Until a key is set, the extension's *Post*
+button stays disabled. (The key is compiled in for now; a Settings screen + a
+shared App Group is the planned hardening — see the roadmap.)
 
 ## Roadmap
 
-- **App icon & launch screen** (reuse the sprout mark from the web favicon).
-- **Native quick-capture**: a Share Extension + a home-screen widget / Shortcut
-  that POST to `/api/capture` with a write-scoped `rzk_` API key — the native
-  equivalent of the `r` command.
+- **Move the capture token out of source** — a Settings screen in the app that
+  stores the server URL + key, shared to the extension via an App Group / Keychain
+  (needs a paid team for App Groups on device).
+- **Home-screen widget / Shortcut** for one-tap capture.
 - **Safe-area polish** for `viewport-fit=cover` (pass the notch/home-indicator
   insets into the web view so the CSS `env(safe-area-*)` lines up).
 - **Push notifications** (needs a paid Apple Developer account).
 - Evaluate a fuller native client (offline op queue in Swift) if the web shell
   proves limiting.
+
+*Done: native SwiftUI web shell, app icon, Share-Extension quick-capture.*
