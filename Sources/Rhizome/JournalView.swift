@@ -38,6 +38,7 @@ struct JournalView: View {
                                             .listRowSeparator(.hidden)
                                             .listRowBackground(Color.rzPaper)
                                     }
+                                    references(for: day.id)
                                 } header: {
                                     Text(day.title)
                                         .font(.rz(22, .semibold))
@@ -79,6 +80,34 @@ struct JournalView: View {
             }
             .onChange(of: focused) { _, new in if new == nil { model.blurred() } }
             .refreshable { await model.loadDoc() }
+        }
+    }
+
+    @ViewBuilder
+    private func references(for dayID: String) -> some View {
+        let linked = model.linkedReferences(to: dayID)
+        let unlinked = model.unlinkedReferences(to: dayID)
+        if !linked.isEmpty {
+            ReferenceHeader(title: "Linked References", count: linked.count)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.rzPaper)
+                .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 2, trailing: 14))
+            ForEach(linked, id: \.self) { id in
+                ReferenceRow(id: id)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 14, bottom: 3, trailing: 14))
+            }
+        }
+        if !unlinked.isEmpty {
+            ReferenceHeader(title: "Unlinked References", count: unlinked.count)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.rzPaper)
+                .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 2, trailing: 14))
+            ForEach(unlinked, id: \.self) { id in
+                ReferenceRow(id: id)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 14, bottom: 3, trailing: 14))
+            }
         }
     }
 }

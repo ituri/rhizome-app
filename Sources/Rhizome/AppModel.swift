@@ -80,6 +80,7 @@ final class AppModel {
     }
 
     func signOut() async {
+        stopEvents()
         if let api { try? await api.logout() }
         user = nil; graphs = []; doc = nil; version = 0
         phase = .signedOut
@@ -88,6 +89,7 @@ final class AppModel {
     func selectGraph(_ id: String) async {
         activeGraphID = id
         await loadDoc()
+        startEvents()
     }
 
     func loadDoc() async {
@@ -164,14 +166,23 @@ final class AppModel {
         if suppressBlur { return }
         flushCurrent()
         editingID = nil
+        if pendingRemoteRefresh {
+            pendingRemoteRefresh = false
+            Task { await loadDoc() }   // catch up on remote changes deferred during editing
+        }
     }
+
+    private var plainCache: [String: String] = [:]
 
     func reindex() {
         var map: [String: String] = [:]
+        var plain: [String: String] = [:]
         for (id, node) in doc?.nodes ?? [:] {
             for child in node.children ?? [] { map[child] = id }
+            plain[id] = RichText.plain(node.text ?? "", doc: doc).lowercased()
         }
         parentMap = map
+        plainCache = plain
     }
 
     func parentOf(_ id: String) -> String? { parentMap[id] }
@@ -195,13 +206,13 @@ final class AppModel {
 
     /// Node ids whose plain text mentions the page's name but don't link to it.
     func unlinkedReferences(to pageID: String) -> [String] {
-        guard let doc, let raw = doc.nodes[pageID]?.text else { return [] }
-        let name = RichText.plain(raw, doc: doc).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard let doc else { return [] }
+        let name = (plainCache[pageID] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard name.count >= 3 else { return [] }
         let linkNeedle = "#/n/\(pageID)"
         return doc.nodes.compactMap { id, node -> String? in
             guard id != pageID, let t = node.text, !t.contains(linkNeedle) else { return nil }
-            return RichText.plain(t, doc: doc).lowercased().contains(name) ? id : nil
+            return (plainCache[id] ?? "").contains(name) ? id : nil
         }.sorted()
     }
 
@@ -388,6 +399,58 @@ final class AppModel {
         }
     }
 
+    // MARK: - Live sync (SSE)
+
+    private var eventTask: Task<Void, Never>?
+    private var pendingRemoteRefresh = false
+
+    private static let eventSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 3600
+        config.httpCookieStorage = .shared
+        return URLSession(configuration: config)
+    }()
+
+    /// Subscribe to the active graph's server-sent events; refetch when a change
+    /// with a newer version arrives (from another device). Reconnects on drop.
+    func startEvents() {
+        eventTask?.cancel()
+        guard let api, let graphID = activeGraph?.id else { return }
+        let base = api.baseURL
+        eventTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.consumeEvents(base: base, graphID: graphID)
+                if Task.isCancelled { break }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)  // reconnect backoff
+            }
+        }
+    }
+
+    func stopEvents() { eventTask?.cancel(); eventTask = nil }
+
+    private func consumeEvents(base: URL, graphID: String) async {
+        var request = URLRequest(url: base.appendingPathComponent("api/g/\(graphID)/events"))
+        request.timeoutInterval = 3600
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        do {
+            let (bytes, response) = try await Self.eventSession.bytes(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+            for try await line in bytes.lines {
+                if Task.isCancelled { return }
+                guard line.hasPrefix("data:") else { continue }  // ignore :hb heartbeats
+                let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                guard let data = payload.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let remoteVersion = obj["version"] as? Int, remoteVersion > version else { continue }
+                if editingID == nil {
+                    await loadDoc()
+                } else {
+                    pendingRemoteRefresh = true   // don't disturb the caret; catch up on blur
+                }
+            }
+        } catch { /* dropped → the loop reconnects */ }
+    }
+
     private func adopt(user: RUser, graphs: [RGraph], api: RhizomeAPI) async {
         self.user = user
         self.graphs = graphs
@@ -396,5 +459,6 @@ final class AppModel {
         }
         phase = .ready
         await loadDoc()
+        startEvents()
     }
 }
