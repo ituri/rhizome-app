@@ -47,7 +47,7 @@ struct WebView: UIViewRepresentable {
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
             guard let target = navigationAction.request.url else { return decisionHandler(.allow) }
             let sameHost = target.host == Config.serverURL.host
