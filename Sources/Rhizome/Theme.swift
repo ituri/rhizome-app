@@ -12,6 +12,8 @@ extension Color {
     static let rzLineSoft = Color(red: 0.9144, green: 0.9011, blue: 0.8739) // --line-soft
     static let rzMention = Color(red: 0.2177, green: 0.4244, blue: 0.6278) // --mention
     static let rzDone = Color(red: 0.6198, green: 0.5919, blue: 0.5616)   // --done
+    static let rzRaised = Color(red: 0.9909, green: 0.9872, blue: 0.9727) // --bg-raised
+    static let rzRefPage = Color(red: 0.063, green: 0.42, blue: 0.639)    // web .ref-page (#106ba3)
 }
 
 extension View {

@@ -1,23 +1,31 @@
 import SwiftUI
 import RhizomeKit
 
-/// A backlink row, styled like the web `.ref-row`: a left accent line, muted text,
-/// a breadcrumb; tapping opens it in context.
+/// References grouped by their containing page.
+struct RefGroup: Identifiable {
+    let pageID: String
+    var id: String { pageID }
+    let pageName: String
+    let refs: [String]
+}
+
+/// A backlink card: an accent stripe, the referencing text and a breadcrumb on a
+/// raised, bordered surface — tapping opens it in context.
 struct ReferenceRow: View {
     @Environment(AppModel.self) private var model
     let id: String
 
     var body: some View {
         NavigationLink(value: model.parentOf(id) ?? id) {
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.rzLine)
-                    .frame(width: 2)
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.rzAccent.opacity(0.55))
+                    .frame(width: 3)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
                         .font(.rz(15))
-                        .foregroundStyle(Color.rzInkSoft)
-                        .lineLimit(3)
+                        .foregroundStyle(Color.rzInk)
+                        .lineLimit(4)
                     let trail = model.breadcrumb(of: id)
                     if !trail.isEmpty {
                         Text(trail)
@@ -26,21 +34,72 @@ struct ReferenceRow: View {
                             .lineLimit(1)
                     }
                 }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 11)
+                Spacer(minLength: 0)
             }
-            .fixedSize(horizontal: false, vertical: true)
+            .background(Color.rzRaised)
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.rzLine, lineWidth: 1))
         }
         .listRowBackground(Color.rzPaper)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 3, leading: 14, bottom: 3, trailing: 14))
     }
 }
 
-/// Section header for the reference groups (web `.ref-page`: accent, semibold).
+/// The section label ("Linked / Unlinked References") — accent, small caps-ish.
 struct ReferenceHeader: View {
     let title: String
     let count: Int
     var body: some View {
         Text("\(title) · \(count)")
-            .font(.rz(13.5, .semibold))
+            .font(.rz(12.5, .semibold))
             .foregroundStyle(Color.rzAccent)
-            .textCase(nil)
+            .textCase(.uppercase)
+            .kerning(0.5)
+    }
+}
+
+/// A blue page-name heading grouping references (web `.ref-page`, #106ba3).
+struct RefPageName: View {
+    let name: String
+    var body: some View {
+        Text(name.isEmpty ? "Untitled" : name)
+            .font(.rz(15, .semibold))
+            .foregroundStyle(Color.rzRefPage)
+    }
+}
+
+/// Renders the grouped Linked / Unlinked reference rows for a page, as list rows.
+@MainActor @ViewBuilder
+func referenceListContent(pageID: String, model: AppModel) -> some View {
+    let linked = model.linkedRefGroups(to: pageID)
+    let unlinked = model.unlinkedRefGroups(to: pageID)
+
+    if !linked.isEmpty {
+        ReferenceHeader(title: "Linked References", count: linked.reduce(0) { $0 + $1.refs.count })
+            .refLabelRow(top: 16)
+        ForEach(linked) { group in
+            RefPageName(name: group.pageName).refLabelRow(top: 6)
+            ForEach(group.refs, id: \.self) { ReferenceRow(id: $0) }
+        }
+    }
+    if !unlinked.isEmpty {
+        ReferenceHeader(title: "Unlinked References", count: unlinked.reduce(0) { $0 + $1.refs.count })
+            .refLabelRow(top: 16)
+        ForEach(unlinked) { group in
+            RefPageName(name: group.pageName).refLabelRow(top: 6)
+            ForEach(group.refs, id: \.self) { ReferenceRow(id: $0) }
+        }
+    }
+}
+
+private extension View {
+    /// Common list-row styling for the reference labels.
+    func refLabelRow(top: CGFloat) -> some View {
+        self.listRowSeparator(.hidden)
+            .listRowBackground(Color.rzPaper)
+            .listRowInsets(EdgeInsets(top: top, leading: 14, bottom: 2, trailing: 14))
     }
 }

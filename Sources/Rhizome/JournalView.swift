@@ -38,13 +38,14 @@ struct JournalView: View {
                                             .listRowSeparator(.hidden)
                                             .listRowBackground(Color.rzPaper)
                                     }
-                                    references(for: day.id)
+                                    referenceListContent(pageID: day.id, model: model)
                                 } header: {
                                     Text(day.title)
-                                        .font(.rz(22, .semibold))
+                                        .font(.rz(27, .bold))
                                         .foregroundStyle(Color.rzInk)
                                         .textCase(nil)
-                                        .padding(.top, 6)
+                                        .padding(.top, 8)
+                                        .padding(.bottom, 2)
                                 }
                             }
                         }
@@ -84,31 +85,4 @@ struct JournalView: View {
         }
     }
 
-    @ViewBuilder
-    private func references(for dayID: String) -> some View {
-        let linked = model.linkedReferences(to: dayID)
-        let unlinked = model.unlinkedReferences(to: dayID)
-        if !linked.isEmpty {
-            ReferenceHeader(title: "Linked References", count: linked.count)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.rzPaper)
-                .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 2, trailing: 14))
-            ForEach(linked, id: \.self) { id in
-                ReferenceRow(id: id)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 14, bottom: 3, trailing: 14))
-            }
-        }
-        if !unlinked.isEmpty {
-            ReferenceHeader(title: "Unlinked References", count: unlinked.count)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.rzPaper)
-                .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 2, trailing: 14))
-            ForEach(unlinked, id: \.self) { id in
-                ReferenceRow(id: id)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 14, bottom: 3, trailing: 14))
-            }
-        }
-    }
 }

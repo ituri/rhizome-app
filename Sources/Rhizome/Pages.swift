@@ -70,8 +70,6 @@ struct PageView: View {
     var body: some View {
         Group {
             if let doc = model.doc, doc.nodes[pageID] != nil {
-                let linked = model.linkedReferences(to: pageID)
-                let unlinked = model.unlinkedReferences(to: pageID)
                 List {
                     Section {
                         ForEach(visibleRows(doc, from: pageID)) { row in
@@ -83,16 +81,7 @@ struct PageView: View {
                                 .listRowBackground(Color.rzPaper)
                         }
                     }
-                    if !linked.isEmpty {
-                        Section {
-                            ForEach(linked, id: \.self) { ReferenceRow(id: $0) }
-                        } header: { ReferenceHeader(title: "Linked References", count: linked.count) }
-                    }
-                    if !unlinked.isEmpty {
-                        Section {
-                            ForEach(unlinked, id: \.self) { ReferenceRow(id: $0) }
-                        } header: { ReferenceHeader(title: "Unlinked References", count: unlinked.count) }
-                    }
+                    referenceListContent(pageID: pageID, model: model)
                 }
                 .outlineList()
             } else {

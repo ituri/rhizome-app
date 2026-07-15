@@ -216,6 +216,36 @@ final class AppModel {
         }.sorted()
     }
 
+    /// The page (top-level node, or the journal day) that contains `id`.
+    func pageOf(_ id: String) -> String {
+        var cur = id
+        var guardN = 0
+        while let p = parentMap[cur], guardN < 50 {
+            if p == doc?.root { return cur }
+            if doc?.nodes[p]?.cal == "day" { return p }
+            cur = p; guardN += 1
+        }
+        return cur
+    }
+
+    func linkedRefGroups(to pageID: String) -> [RefGroup] { groupRefs(linkedReferences(to: pageID)) }
+    func unlinkedRefGroups(to pageID: String) -> [RefGroup] { groupRefs(unlinkedReferences(to: pageID)) }
+
+    private func groupRefs(_ ids: [String]) -> [RefGroup] {
+        var byPage: [String: [String]] = [:]
+        var order: [String] = []
+        for id in ids {
+            let page = pageOf(id)
+            if byPage[page] == nil { order.append(page) }
+            byPage[page, default: []].append(id)
+        }
+        return order.map { page in
+            RefGroup(pageID: page,
+                     pageName: RichText.plain(doc?.nodes[page]?.text ?? "", doc: doc),
+                     refs: byPage[page] ?? [])
+        }
+    }
+
     /// A " › "-joined trail of ancestor texts, for search-result context.
     func breadcrumb(of id: String) -> String {
         var trail: [String] = []
