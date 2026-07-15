@@ -52,6 +52,8 @@ struct OutlineRow: View {
             if model.editingID == id {
                 TextField("", text: model.editBinding)
                     .font(.rz(16.5))
+                    .autocorrectionDisabled()               // stop iOS silently changing words (Sync → Synck)
+                    .textInputAutocapitalization(.sentences)
                     .focused($focused, equals: id)
                     .submitLabel(.next)
                     .onSubmit {
