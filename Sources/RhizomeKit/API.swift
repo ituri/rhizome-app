@@ -93,6 +93,14 @@ public struct RhizomeAPI: Sendable {
         return (try? JSONDecoder().decode(Version.self, from: data).version) ?? 0
     }
 
+    /// Full-text search → matching node ids (server-side FTS).
+    public func search(graphID: String, query: String) async throws -> [String] {
+        let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let data = try await get("api/g/\(graphID)/search?q=\(q)")
+        struct Result: Decodable { let ids: [String] }
+        return (try? JSONDecoder().decode(Result.self, from: data).ids) ?? []
+    }
+
     /// Quick-capture a line into today's journal Inbox (the server creates the day
     /// node if needed). Uses the current session.
     public func capture(_ text: String) async throws {

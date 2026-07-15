@@ -17,6 +17,7 @@ struct ContentView: View {
             TabView {
                 Tab("Journal", systemImage: "calendar") { JournalView() }
                 Tab("Pages", systemImage: "doc.text") { PagesView() }
+                Tab("Search", systemImage: "magnifyingglass", role: .search) { SearchView() }
             }
         }
     }

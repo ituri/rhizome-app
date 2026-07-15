@@ -174,6 +174,27 @@ final class AppModel {
 
     func parentOf(_ id: String) -> String? { parentMap[id] }
 
+    /// Full-text search in the active graph → matching node ids.
+    func search(_ query: String) async -> [String] {
+        guard let api, let graphID = activeGraph?.id,
+              !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        return (try? await api.search(graphID: graphID, query: query)) ?? []
+    }
+
+    /// A " › "-joined trail of ancestor texts, for search-result context.
+    func breadcrumb(of id: String) -> String {
+        var trail: [String] = []
+        var cur = parentMap[id]
+        var guardCount = 0
+        while let node = cur, node != doc?.root, guardCount < 20 {
+            let text = RichText.plain(doc?.nodes[node]?.text ?? "", doc: doc)
+            if !text.isEmpty { trail.append(text) }
+            cur = parentMap[node]
+            guardCount += 1
+        }
+        return trail.reversed().joined(separator: " › ")
+    }
+
     func toggleCollapse(_ id: String) {
         guard let node = doc?.nodes[id] else { return }
         let next = !(node.collapsed ?? false)
