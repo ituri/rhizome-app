@@ -1,2 +1,4 @@
 version: 1
 bundleID: org.syslinx.rhizome
+product: Rhizome
+iconPath: Icon.png
