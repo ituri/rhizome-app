@@ -1,10 +1,17 @@
 import Foundation
 
 /// A JSON scalar we might send in an op's `data`/`patch`.
-public enum JSONValue: Encodable, Sendable {
+public enum JSONValue: Codable, Sendable {
     case string(String)
     case bool(Bool)
     case int(Int)
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let b = try? c.decode(Bool.self) { self = .bool(b) }
+        else if let i = try? c.decode(Int.self) { self = .int(i) }
+        else { self = .string(try c.decode(String.self)) }
+    }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
@@ -18,7 +25,7 @@ public enum JSONValue: Encodable, Sendable {
 
 /// One mutation op, matching the server's Route-B protocol (`opsdoc.js`). Only the
 /// fields relevant to a given `kind` are set; the rest stay nil and are omitted.
-public struct Op: Encodable, Sendable {
+public struct Op: Codable, Sendable {
     public var kind: String
     public var node: String
     public var hlc: String

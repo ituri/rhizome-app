@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct RhizomeApp: App {
     @State private var model = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() { Fonts.register() }
 
@@ -13,6 +14,9 @@ struct RhizomeApp: App {
                 .tint(.rzAccent)
                 .preferredColorScheme(.light)
                 .task { await model.bootstrap() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.onForeground() }   // reconnect + flush the offline queue
         }
     }
 }

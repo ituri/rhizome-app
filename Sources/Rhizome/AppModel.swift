@@ -28,6 +28,7 @@ final class AppModel {
     var version = 0
     var errorMessage: String?
     var busy = false
+    var isOffline = false
 
     /// Prepend an `HH:mm` timestamp to captured notes, like the `r` command.
     var captureTimestamp: Bool {
@@ -56,13 +57,21 @@ final class AppModel {
         guard let api else { phase = .signedOut; return }
         do {
             let me = try await api.me()
+            LocalStore.save(me, "me.json")
+            isOffline = false
             if let u = me.user {
                 await adopt(user: u, graphs: me.graphs ?? [], api: api)
             } else {
                 phase = .signedOut
             }
         } catch {
-            phase = .signedOut
+            // offline: resume from the last cached session + doc
+            if let me = LocalStore.load(RMe.self, "me.json"), let u = me.user {
+                isOffline = true
+                await adopt(user: u, graphs: me.graphs ?? [], api: api)
+            } else {
+                phase = .signedOut
+            }
         }
     }
 
@@ -87,7 +96,10 @@ final class AppModel {
     }
 
     func selectGraph(_ id: String) async {
+        persistOutbox()        // save the current graph's pending edits (under its id)
         activeGraphID = id
+        loadOutbox()           // load the new graph's queue
+        doc = nil              // force a fresh load (or cached) for the new graph
         await loadDoc()
         startEvents()
     }
@@ -101,8 +113,18 @@ final class AppModel {
             doc = response.doc
             version = response.version
             reindex()
+            LocalStore.save(response, "doc-\(graphID).json")
+            isOffline = false
+            drain()   // network is up — flush any edits queued while offline
         } catch {
-            errorMessage = String(describing: error)
+            isOffline = true
+            // cold offline boot: fall back to the cached doc (don't clobber a doc
+            // we already have loaded with unsynced local edits)
+            if doc == nil, let cached = LocalStore.load(RDocResponse.self, "doc-\(graphID).json") {
+                doc = cached.doc
+                version = cached.version
+                reindex()
+            }
         }
     }
 
@@ -403,29 +425,33 @@ final class AppModel {
     /// and get dropped, which is why structure synced but text didn't.)
     private func send(_ ops: [Op]) {
         outbox.append(contentsOf: ops)
+        persistOutbox()
         drain()
     }
 
     private func drain() {
         guard !sending, !outbox.isEmpty, let api, let graphID = activeGraph?.id else { return }
         sending = true
-        let batch = outbox
-        outbox.removeAll()
+        let batch = outbox                       // keep it queued until it's acked
         let device = clock.device
         let kinds = batch.map(\.kind).joined(separator: ",")
         Task {
             do {
                 version = try await api.postOps(graphID: graphID, ops: batch, device: device)
+                outbox.removeFirst(batch.count)  // drop only the acked prefix (edits during await stay)
+                persistOutbox()
                 lastSync = "\(kinds) → v\(version)"
                 syncFailed = false
+                isOffline = false
+                sending = false
+                drain()                          // flush anything queued during the await
             } catch {
-                lastSync = "✗ \(kinds): \(error)"
+                // offline / transient: keep the batch queued and retry later
+                lastSync = "queued offline: \(kinds)"
                 syncFailed = true
-                await loadDoc()
-                outbox.removeAll()
+                isOffline = true
+                sending = false
             }
-            sending = false
-            drain()
         }
     }
 
@@ -488,7 +514,29 @@ final class AppModel {
             activeGraphID = graphs.first?.id
         }
         phase = .ready
-        await loadDoc()
+        loadOutbox()          // restore edits queued offline in a previous run
+        await loadDoc()       // online → fetch + cache + drain; offline → cached doc
         startEvents()
+    }
+
+    // MARK: - Offline op queue (persisted per graph)
+
+    private func outboxKey(_ graphID: String) -> String { "outbox-\(graphID).json" }
+
+    private func persistOutbox() {
+        guard let graphID = activeGraph?.id else { return }
+        LocalStore.save(outbox, outboxKey(graphID))
+    }
+
+    private func loadOutbox() {
+        guard let graphID = activeGraph?.id else { outbox = []; return }
+        outbox = LocalStore.load([Op].self, outboxKey(graphID)) ?? []
+    }
+
+    /// Retry pending sends + refresh when the app returns to the foreground.
+    func onForeground() {
+        guard user != nil else { return }
+        startEvents()
+        Task { await loadDoc() }
     }
 }

@@ -6,15 +6,18 @@ import RhizomeKit
 struct SyncIndicator: View {
     @Environment(AppModel.self) private var model
     var body: some View {
-        switch model.syncState {
-        case .syncing:
-            ProgressView().controlSize(.mini)
-        case .error:
-            Image(systemName: "exclamationmark.icloud")
-                .foregroundStyle(.orange)
-        case .synced:
-            Image(systemName: "checkmark.icloud")
-                .foregroundStyle(.secondary)
+        if model.isOffline {
+            Image(systemName: "icloud.slash")
+                .foregroundStyle(Color.rzInkFaint)
+        } else {
+            switch model.syncState {
+            case .syncing:
+                ProgressView().controlSize(.mini)
+            case .error:
+                Image(systemName: "exclamationmark.icloud").foregroundStyle(.orange)
+            case .synced:
+                Image(systemName: "checkmark.icloud").foregroundStyle(Color.rzInkFaint)
+            }
         }
     }
 }
