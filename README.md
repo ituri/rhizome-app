@@ -1,24 +1,27 @@
 # Rhizome iOS
 
-A native iPhone shell for [Rhizome](https://rhizome.syslinx.org), built with
-**SwiftUI** and packaged with [**xtool**](https://github.com/xtool-org/xtool) —
+A **fully native** iPhone client for [Rhizome](https://rhizome.syslinx.org), built
+with **SwiftUI** and packaged with [**xtool**](https://github.com/xtool-org/xtool) —
 an Xcode-free, SwiftPM-based toolchain that builds and deploys iOS apps from
 Linux, Windows or macOS.
 
-## What it is (v1)
+## What it is
 
-A thin native wrapper around the existing Rhizome PWA: a full-screen `WKWebView`
-pointed at your instance, with
+A native SwiftUI app that talks to the Rhizome HTTP API directly — no web view,
+no embedded browser. Current state:
 
-- a **persistent data store** — the login session and the web app's IndexedDB
-  offline cache survive relaunches, so the app opens straight into your outline
-  (and works offline, since the PWA already cold-boots from its cache);
-- **pull-to-refresh** and back/forward swipe gestures;
-- **external links** (share cards, references to other sites) open in Safari
-  instead of trapping you inside the app.
+- **Native sign-in** (server URL + username/password → a Rhizome session cookie,
+  persisted so relaunches resume silently).
+- **Native outline view** — the graph is fetched from the API and rendered as an
+  indented SwiftUI list with collapse/expand and done styling. Multi-graph
+  switcher + reload + sign-out in the toolbar.
+- A **Share Extension** for quick-capture into the Inbox (see below).
 
-Point it at a different server by editing `Config.serverURL` in
-`Sources/Rhizome/Config.swift`.
+**In progress** (the tree renders read-only for now): inline text editing and
+structural ops (enter / tab / move / delete → `/api/g/:id/ops`), live SSE sync,
+and rich rendering of `[[links]]` / `#tags` / attributes. See the roadmap.
+
+The server URL is set on the sign-in screen (defaults to `Config.serverURL`).
 
 ## Prerequisites
 
@@ -71,12 +74,15 @@ Icon.png                          1024×1024 app icon (rendered from the web spr
 RhizomeShare-Info.plist           Share Extension Info.plist (share-services)
 .sourcekit-lsp/config.json        LSP → iOS SDK, for editor support
 Sources/RhizomeKit/               shared by the app + extension
-  Config.swift                    server URL, capture token, theme
+  Config.swift                    default server URL, capture token, theme
   Capture.swift                   POSTs a line to /api/capture (like the `r` command)
+  API.swift                       async HTTP client + wire models (login, me, doc)
 Sources/Rhizome/                  the app
   RhizomeApp.swift                @main App entry point
-  ContentView.swift               root view (hosts the web view + loading state)
-  WebView.swift                   UIViewRepresentable around WKWebView (iOS only)
+  AppModel.swift                  @Observable state: session, graphs, active doc
+  ContentView.swift               router: loading / sign-in / outline
+  SignInView.swift                native sign-in form
+  OutlineView.swift               native indented outline list
 Sources/RhizomeShare/             the Share Extension
   ShareViewController.swift       compose sheet → quick-capture into the Inbox
 ```
@@ -93,14 +99,18 @@ shared App Group is the planned hardening — see the roadmap.)
 
 ## Roadmap
 
-- **Move the capture token out of source** — a Settings screen in the app that
-  stores the server URL + key, shared to the extension via an App Group / Keychain
-  (needs a paid team for App Groups on device).
+- **Editing** — inline text editing and structural ops (enter / tab+shift-tab /
+  move / delete / toggle-done) posted to `/api/g/:id/ops`, with an on-device undo.
+- **Live sync** — subscribe to `/api/g/:id/events` (SSE) so remote edits stream in.
+- **Rich rendering** — `[[links]]`, `#tags`, `((block refs))`, attributes and
+  Markdown styling in the native rows (tappable links / zoom).
+- **Offline** — cache the doc + queue ops locally, replay on reconnect.
+- **Move the capture token out of source** — a Settings screen that stores the
+  key, shared to the extension via an App Group / Keychain (App Groups on device
+  need a paid team).
 - **Home-screen widget / Shortcut** for one-tap capture.
-- **Safe-area polish** for `viewport-fit=cover` (pass the notch/home-indicator
-  insets into the web view so the CSS `env(safe-area-*)` lines up).
 - **Push notifications** (needs a paid Apple Developer account).
-- Evaluate a fuller native client (offline op queue in Swift) if the web shell
-  proves limiting.
+
+*Done: native sign-in, native read-only outline, app icon, Share-Extension quick-capture.*
 
 *Done: native SwiftUI web shell, app icon, Share-Extension quick-capture.*
