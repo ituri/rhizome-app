@@ -37,14 +37,18 @@ struct OutlineRow: View {
     private var isDone: Bool { node?.done ?? false }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        // .top (not .firstTextBaseline): a vertical-axis TextField reports its baseline low,
+        // which dropped the cursor well below the bullet. Aligning tops and centering the
+        // marker within one line's height keeps the bullet next to the first line — for both
+        // the editor and wrapped display rows.
+        HStack(alignment: .top, spacing: 8) {
             Button {
                 if hasChildren { model.toggleCollapse(id) }
             } label: {
                 Image(systemName: hasChildren ? (isCollapsed ? "chevron.right" : "chevron.down") : "circle.fill")
                     .font(.system(size: hasChildren ? 11 : 5, weight: .semibold))
                     .foregroundStyle(Color.rzInkFaint)
-                    .frame(width: 14)
+                    .frame(width: 14, height: 26, alignment: .center)
             }
             .buttonStyle(.plain)
             .disabled(!hasChildren)
@@ -56,6 +60,7 @@ struct OutlineRow: View {
                 // start the next" — the same behaviour the single-line field had via onSubmit.
                 TextField("", text: model.editBinding, axis: .vertical)
                     .font(.rz(16.5))
+                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // align cursor with the bullet
                     .autocorrectionDisabled()               // stop iOS silently changing words (Sync → Synck)
                     .textInputAutocapitalization(.sentences)
                     .focused($focused, equals: id)
@@ -100,62 +105,48 @@ struct OutlineRow: View {
     }
 }
 
-/// Keyboard accessory shared by the editing lists: indent / outdent / done / dismiss.
+/// Keyboard accessory for the editing lists. Normally indent / outdent / done / dismiss;
+/// while a `[[` (page) or `((` (block) trigger is open it turns into the autocomplete
+/// strip (the mobile counterpart to the desktop's caret popup) — one bar, so it never
+/// collides with a separately-floating suggestion view.
 struct EditingKeyboardBar: ToolbarContent {
     @Environment(AppModel.self) private var model
     @FocusState.Binding var focused: String?
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .keyboard) {
-            Button { if let id = model.editingID { model.outdent(id) } } label: {
-                Image(systemName: "arrow.left.to.line")
-            }
-            Button { if let id = model.editingID { model.indent(id) } } label: {
-                Image(systemName: "arrow.right.to.line")
-            }
-            Button { if let id = model.editingID { model.toggleDone(id) } } label: {
-                Image(systemName: "checkmark.circle")
-            }
-            Spacer()
-            Button("Done") { focused = nil }
-        }
-    }
-}
-
-/// The `[[` (page) / `((` (block) autocomplete strip, shown above the keyboard while a
-/// trigger is active — the mobile counterpart to the desktop's caret popup. Tapping a
-/// chip inserts the link (or creates the page) via `AppModel.acceptLinkSuggestion`.
-struct LinkSuggestionBar: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        if !model.linkSuggestions.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(model.linkSuggestions) { s in
-                        Button { model.acceptLinkSuggestion(s) } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: s.isCreate ? "plus.circle"
-                                    : (model.linkSuggestKind == .block ? "text.quote" : "link"))
-                                    .font(.system(size: 12))
-                                Text(s.isCreate ? "Create “\(s.title)”" : s.title)
-                                    .lineLimit(1)
-                                    .font(.rz(15))
+            if !model.linkSuggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(model.linkSuggestions) { s in
+                            Button { model.acceptLinkSuggestion(s) } label: {
+                                Label(
+                                    s.isCreate ? "Create “\(s.title)”" : s.title,
+                                    systemImage: s.isCreate ? "plus.circle"
+                                        : (model.linkSuggestKind == .block ? "text.quote" : "link")
+                                )
+                                .lineLimit(1)
+                                .font(.rz(15))
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(Color.rzAccent.opacity(0.12), in: Capsule())
-                            .foregroundStyle(Color.rzAccent)
+                            .buttonStyle(.borderless)
+                            .tint(.rzAccent)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 4)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+            } else {
+                Button { if let id = model.editingID { model.outdent(id) } } label: {
+                    Image(systemName: "arrow.left.to.line")
+                }
+                Button { if let id = model.editingID { model.indent(id) } } label: {
+                    Image(systemName: "arrow.right.to.line")
+                }
+                Button { if let id = model.editingID { model.toggleDone(id) } } label: {
+                    Image(systemName: "checkmark.circle")
+                }
+                Spacer()
+                Button("Done") { focused = nil }
             }
-            .background(.regularMaterial)
-            .overlay(alignment: .top) { Divider() }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 }
