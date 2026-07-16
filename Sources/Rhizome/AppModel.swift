@@ -151,7 +151,8 @@ final class AppModel {
     var editText = ""                 // live buffer for the row being edited
     var linkSuggestions: [LinkSuggestion] = []   // active [[ / (( autocomplete matches
     var linkSuggestKind: LinkKind?
-    var locating = false                          // geo button is fetching a fix
+    var locating = false                          // geo button is waiting for a fix
+    @ObservationIgnored private let locationProvider = LocationProvider()
     private var flushTask: Task<Void, Never>?
 
     // The UITextView editor registers a callback so the keyboard bar's suggestion chips can
@@ -197,6 +198,7 @@ final class AppModel {
         editingID = id
         editText = doc?.nodes[id]?.text ?? ""
         clearLinkSuggestions()
+        locationProvider.start()   // warm up location so the geo button is ready/instant
     }
 
     /// Return pressed in the rich editor: save this bullet, open a fresh sibling and make it the
@@ -262,6 +264,7 @@ final class AppModel {
         flushCurrent()
         editingID = nil
         clearLinkSuggestions()
+        locationProvider.stop()
         if pendingRemoteRefresh {
             pendingRemoteRefresh = false
             Task { await loadDoc() }   // catch up on remote changes deferred during editing
@@ -387,17 +390,23 @@ final class AppModel {
     /// caret splice — means it works whether or not the editor kept focus during the fetch.
     func insertGeoLink() async {
         guard let id = editingID, !locating else { return }
-        locating = true
-        defer { locating = false }
-        do {
-            let coord = try await Location.current()
-            let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
-            let pageID = findOrCreatePage(title: title)
-            guard !pageID.isEmpty else { return }
-            appendGeo(to: id, source: "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
-        } catch {
-            errorMessage = "Standort nicht verfügbar — Zugriff erlaubt?"
+        locationProvider.start()
+        // use the warm fix if we have one; otherwise poll briefly (bounded — never hangs)
+        if locationProvider.current == nil {
+            locating = true
+            defer { locating = false }
+            for _ in 0..<30 where locationProvider.current == nil {
+                try? await Task.sleep(nanoseconds: 300_000_000)   // ~9s max
+            }
         }
+        guard let coord = locationProvider.current else {
+            errorMessage = "Standort nicht verfügbar — Zugriff erlaubt?"
+            return
+        }
+        let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
+        let pageID = findOrCreatePage(title: title)
+        guard !pageID.isEmpty else { return }
+        appendGeo(to: id, source: "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
     }
 
     /// Append a source fragment to a bullet (separated by a space) and sync. If that bullet is

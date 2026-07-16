@@ -1,34 +1,42 @@
 import CoreLocation
 
-enum LocationError: Error { case unavailable }
+/// A retained location provider that keeps the latest coordinate warm while you edit, so the
+/// geo button can read a cached fix instead of waiting on a one-shot request (which could hang
+/// and leave the button stuck). Nothing here can block: the button polls `current` with a bound.
+@MainActor
+final class LocationProvider: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private(set) var current: CLLocationCoordinate2D?
 
-/// Current coordinate via the modern async location stream (iOS 17+). Prompts for When-In-Use
-/// permission if needed (see Info.plist), yields the first fix, and — crucially — times out, so
-/// the geo button never sticks in its spinning state when no fix arrives.
-enum Location {
-    private struct Coord: Sendable { let latitude: Double; let longitude: Double }
-
-    static func current() async throws -> CLLocationCoordinate2D {
-        let c = try await withThrowingTaskGroup(of: Coord.self) { group -> Coord in
-            group.addTask { try await firstFix() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 15_000_000_000)   // 15s safety net
-                throw LocationError.unavailable
-            }
-            defer { group.cancelAll() }
-            guard let coord = try await group.next() else { throw LocationError.unavailable }
-            return coord
-        }
-        return CLLocationCoordinate2D(latitude: c.latitude, longitude: c.longitude)
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
 
-    private static func firstFix() async throws -> Coord {
-        for try await update in CLLocationUpdate.liveUpdates() {
-            if let loc = update.location {
-                return Coord(latitude: loc.coordinate.latitude, longitude: loc.coordinate.longitude)
-            }
-            if update.authorizationDenied { throw LocationError.unavailable }
-        }
-        throw LocationError.unavailable
+    /// Begin warming up (called when editing starts): prompt for permission if needed and start
+    /// standard updates so `current` fills in within a second or two.
+    func start() {
+        if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() }
+        manager.startUpdatingLocation()
     }
+
+    func stop() { manager.stopUpdatingLocation() }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        let lat = locations.last?.coordinate.latitude
+        let lon = locations.last?.coordinate.longitude
+        Task { @MainActor in if let lat, let lon { self.current = CLLocationCoordinate2D(latitude: lat, longitude: lon) } }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        Task { @MainActor in
+            switch manager.authorizationStatus {
+            case .authorizedWhenInUse, .authorizedAlways: self.manager.startUpdatingLocation()
+            default: break
+            }
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 }
