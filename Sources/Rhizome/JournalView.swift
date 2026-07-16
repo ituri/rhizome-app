@@ -69,7 +69,6 @@ struct JournalView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
                 }
-                EditingKeyboardBar()
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .alert("Capture to today", isPresented: $showingCapture) {

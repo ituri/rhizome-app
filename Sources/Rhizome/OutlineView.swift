@@ -80,15 +80,15 @@ struct OutlineRow: View {
     }
 }
 
-/// Keyboard accessory for the editing lists. Normally indent / outdent / done / dismiss;
-/// while a `[[` (page) or `((` (block) trigger is open it turns into the autocomplete
-/// strip (the mobile counterpart to the desktop's caret popup) — one bar, so it never
-/// collides with a separately-floating suggestion view.
-struct EditingKeyboardBar: ToolbarContent {
-    @Environment(AppModel.self) private var model
+/// Keyboard accessory for the rich editor, hosted as the UITextView's `inputAccessoryView`
+/// (a SwiftUI `.toolbar(.keyboard)` does NOT attach to a UIKit first responder, so it would
+/// otherwise vanish). While a `[[` / `((` trigger is open it shows the autocomplete chips,
+/// otherwise the indent / outdent / done / dismiss controls.
+struct KeyboardAccessory: View {
+    let model: AppModel
 
-    var body: some ToolbarContent {
-        ToolbarItemGroup(placement: .keyboard) {
+    var body: some View {
+        HStack(spacing: 14) {
             if !model.linkSuggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -101,12 +101,15 @@ struct EditingKeyboardBar: ToolbarContent {
                                 )
                                 .lineLimit(1)
                                 .font(.rz(15))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.rzAccent.opacity(0.12), in: Capsule())
                             }
-                            .buttonStyle(.borderless)
-                            .tint(.rzAccent)
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.rzAccent)
                         }
                     }
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, 12)
                 }
             } else {
                 Button { if let id = model.editingID { model.outdent(id) } } label: {
@@ -119,8 +122,12 @@ struct EditingKeyboardBar: ToolbarContent {
                     Image(systemName: "checkmark.circle")
                 }
                 Spacer()
-                Button("Done") { model.endEditing() }
+                Button("Done") { model.endEditing() }.fontWeight(.semibold)
             }
         }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: 48)
+        .background(.regularMaterial)
+        .tint(.rzAccent)
     }
 }

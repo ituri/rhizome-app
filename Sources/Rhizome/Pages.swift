@@ -120,7 +120,6 @@ struct PageView: View {
                     if let new = model.insertChild(of: pageID) { model.beginEdit(new) }
                 } label: { Image(systemName: "plus") }
             }
-            EditingKeyboardBar()
         }
     }
 }
