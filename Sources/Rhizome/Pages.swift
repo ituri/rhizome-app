@@ -86,21 +86,25 @@ struct PageView: View {
                             }
                         }
                         referenceListContent(pageID: pageID, model: model)
-                        // a little scroll room below the last row so the edited line can be
-                        // lifted clear of the keyboard's indent toolbar
+                        // While editing, add a screenful of scroll room below the last row so
+                        // ANY line — even the last — can be scrolled up to the middle of the
+                        // screen, clear of the keyboard + indent toolbar. Collapses when idle.
                         Color.clear
-                            .frame(height: 44)
+                            .frame(height: model.editingID != nil ? 360 : 24)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.rzPaper)
                     }
                     .outlineList()
-                    // in a growing document you edit near the BOTTOM, where the keyboard's indent
-                    // toolbar would otherwise cover the active line. Once the keyboard has slid up
-                    // (and shrunk the visible area), scroll the focused row to sit just above it.
+                    // center the line being edited on screen so the keyboard never covers it —
+                    // once the keyboard has settled (and the spacer above has opened up the room)
                     .onChange(of: focused) { _, new in
                         guard let new else { return }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(new, anchor: .bottom) }
+                        // two passes: the first catches the common case, the second (a no-op if
+                        // already centered) covers a slow keyboard / late layout settle
+                        for delay in [0.4, 0.7] {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(new, anchor: .center) }
+                            }
                         }
                     }
                 }
