@@ -58,16 +58,21 @@ struct OutlineRow: View {
             } else {
                 // An edit-tap layer BEHIND the text, so tapping anywhere starts editing — while
                 // links/refs in the text (in front) still take their own taps to navigate. A
-                // Text with links otherwise swallows taps, leaving linked bullets uneditable.
+                // Text swallows taps, so on a bullet WITHOUT links we turn off the text's hit
+                // testing: otherwise a long, wrapped line (which fills the whole width, leaving no
+                // bare area to hit the layer behind) can't be tapped to edit at all.
+                let raw = node?.text ?? ""
+                let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
                 ZStack(alignment: .topLeading) {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture { model.beginEdit(id) }
-                    Text(RichText.attributed(node?.text ?? "", doc: model.doc))
+                    Text(RichText.attributed(raw, doc: model.doc))
                         .font(.rz(16.5))
                         .lineSpacing(3)
                         .strikethrough(isDone)
                         .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
+                        .allowsHitTesting(hasLinks)
                 }
                 .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
             }
