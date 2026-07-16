@@ -136,6 +136,17 @@ public struct RhizomeAPI: Sendable {
         _ = try await post("api/account/password", body: Body(current: current, next: next))
     }
 
+    /// Permanently delete the signed-in account (and the graphs it solely owns). Confirmed
+    /// by re-entering the password. The server also clears the session cookie.
+    public func deleteAccount(password: String) async throws {
+        struct Body: Encodable { let password: String }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/account"))
+        request.httpMethod = "DELETE"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(Body(password: password))
+        _ = try await send(request)
+    }
+
     /// Reverse-geocode a coordinate to a short address (server-side, same result as the web app).
     public func reverseGeocode(lat: Double, lon: Double) async throws -> String {
         var comps = URLComponents(url: baseURL.appendingPathComponent("api/geocode"), resolvingAgainstBaseURL: false)!

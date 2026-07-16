@@ -171,6 +171,10 @@ struct SettingsView: View {
                     Button("Sign out", role: .destructive) {
                         Task { await model.signOut(); dismiss() }
                     }
+                    NavigationLink("Delete account") { DeleteAccountView() }
+                        .foregroundStyle(.red)
+                } footer: {
+                    Text("Deleting your account permanently removes it and the graphs you own from the server.")
                 }
             }
             .paperBackground()
@@ -225,5 +229,54 @@ struct ChangePasswordView: View {
         .paperBackground()
         .navigationTitle("Change password")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Permanently delete the signed-in account (DELETE /api/account). Requires the password
+/// and an explicit confirmation, since it also removes the graphs the user owns.
+struct DeleteAccountView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var confirming = false
+    @State private var error: String?
+    @State private var busy = false
+
+    var body: some View {
+        Form {
+            Section {
+                Text("This permanently deletes your account and the graphs you own, including all their notes and files. This cannot be undone.")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                SecureField("Password", text: $password)
+            } footer: {
+                if let error { Text(error).foregroundStyle(.red) }
+            }
+            Section {
+                Button(role: .destructive) {
+                    confirming = true
+                } label: {
+                    if busy { ProgressView() } else { Text("Delete account") }
+                }
+                .disabled(password.isEmpty || busy)
+            }
+        }
+        .paperBackground()
+        .navigationTitle("Delete account")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Delete your account?", isPresented: $confirming, titleVisibility: .visible) {
+            Button("Delete account", role: .destructive) {
+                busy = true; error = nil
+                Task {
+                    let e = await model.deleteAccount(password: password)
+                    busy = false
+                    if let e { error = e } else { dismiss() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
+        }
     }
 }

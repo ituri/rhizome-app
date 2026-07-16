@@ -210,6 +210,19 @@ final class AppModel {
         catch { return String(describing: error) }
     }
 
+    /// Permanently delete the account, then return to the signed-out state. Returns nil on
+    /// success, else an error message.
+    func deleteAccount(password: String) async -> String? {
+        guard let api else { return "No server configured." }
+        do {
+            try await api.deleteAccount(password: password)
+            stopEvents()
+            user = nil; graphs = []; doc = nil; version = 0
+            phase = .signedOut
+            return nil
+        } catch { return String(describing: error) }
+    }
+
     func selectGraph(_ id: String) async {
         persistOutbox()        // save the current graph's pending edits (under its id)
         activeGraphID = id

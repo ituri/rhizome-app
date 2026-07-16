@@ -10,5 +10,10 @@
     <string>Rhizome nutzt Face ID, um die App zu entsperren.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <!-- iPhone only (1 = iPhone/iPod, 2 = iPad); overrides xtool's universal default. -->
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+    </array>
 </dict>
 </plist>
