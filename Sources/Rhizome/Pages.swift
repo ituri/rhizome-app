@@ -72,20 +72,38 @@ struct PageView: View {
     var body: some View {
         Group {
             if let doc = model.doc, doc.nodes[pageID] != nil {
-                List {
-                    Section {
-                        ForEach(visibleRows(doc, from: pageID)) { row in
-                            OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
-                                .listRowInsets(EdgeInsets(
-                                    top: 5, leading: CGFloat(row.depth) * 18 + 14, bottom: 5, trailing: 14
-                                ))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.rzPaper)
+                ScrollViewReader { proxy in
+                    List {
+                        Section {
+                            ForEach(visibleRows(doc, from: pageID)) { row in
+                                OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
+                                    .listRowInsets(EdgeInsets(
+                                        top: 5, leading: CGFloat(row.depth) * 18 + 14, bottom: 5, trailing: 14
+                                    ))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.rzPaper)
+                                    .id(row.id)
+                            }
+                        }
+                        referenceListContent(pageID: pageID, model: model)
+                        // a little scroll room below the last row so the edited line can be
+                        // lifted clear of the keyboard's indent toolbar
+                        Color.clear
+                            .frame(height: 44)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.rzPaper)
+                    }
+                    .outlineList()
+                    // in a growing document you edit near the BOTTOM, where the keyboard's indent
+                    // toolbar would otherwise cover the active line. Once the keyboard has slid up
+                    // (and shrunk the visible area), scroll the focused row to sit just above it.
+                    .onChange(of: focused) { _, new in
+                        guard let new else { return }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(new, anchor: .bottom) }
                         }
                     }
-                    referenceListContent(pageID: pageID, model: model)
                 }
-                .outlineList()
             } else {
                 ContentUnavailableView("Page not found", systemImage: "questionmark.folder")
             }

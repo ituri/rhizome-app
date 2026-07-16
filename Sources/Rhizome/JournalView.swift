@@ -82,6 +82,7 @@ struct JournalView: View {
                 Button("Cancel", role: .cancel) { captureText = "" }
             }
             .onChange(of: focused) { _, new in if new == nil { model.blurred() } }
+            .onAppear { model.ensureToday() }   // create today's day when entering the journal
             .refreshable { await model.loadDoc() }
         }
         .handleNodeLinks(path: $path, model: model)

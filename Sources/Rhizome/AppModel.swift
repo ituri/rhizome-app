@@ -117,6 +117,7 @@ final class AppModel {
             reindex()
             LocalStore.save(response, "doc-\(graphID).json")
             isOffline = false
+            ensureToday()   // create today's journal day if the server doesn't have it yet
             drain()   // network is up — flush any edits queued while offline
         } catch {
             isOffline = true
@@ -126,6 +127,7 @@ final class AppModel {
                 doc = cached.doc
                 version = cached.version
                 reindex()
+                ensureToday()   // offline cold boot on a new day: queue today's day for later sync
             }
         }
     }
@@ -387,6 +389,70 @@ final class AppModel {
         }
     }
 
+    // MARK: - Journal: ensure today exists
+
+    private var ensuredDay: String?   // cd we've already created/confirmed this session
+
+    /// Make sure today's journal day exists so it shows up (and is writable) the moment
+    /// the day rolls over — the native equivalent of the web app auto-creating today when
+    /// you open the daily view. Builds the calendar root → year → month → day chain as
+    /// needed (find-or-create by title), plus one empty bullet to type into. Idempotent.
+    func ensureToday() {
+        guard let doc else { return }
+        let root = doc.root
+        let cal = Calendar.current
+        let now = Date()
+        let parts = cal.dateComponents([.year, .month, .day], from: now)
+        guard let year = parts.year, let month = parts.month, let day = parts.day else { return }
+        let cd = String(format: "%04d-%02d-%02d", year, month, day)
+        if ensuredDay == cd { return }
+
+        let monthFmt = DateFormatter()
+        monthFmt.locale = Locale(identifier: "en_US_POSIX")
+        monthFmt.dateFormat = "MMMM"
+        let monthName = monthFmt.string(from: now)
+        let title = "\(monthName) \(day)\(Self.ordinalSuffix(day)), \(year)"   // "July 16th, 2026"
+
+        if doc.nodes.values.contains(where: { $0.cal == "day" && $0.text == title }) {
+            ensuredDay = cd
+            return
+        }
+        let calRootID = doc.nodes.first(where: { $0.value.cal == "root" })?.key
+            ?? insertCalNode(parent: root, cal: "root", text: "📅 Calendar")
+        let yearID = childCalNode(of: calRootID, cal: "year", text: "\(year)")
+            ?? insertCalNode(parent: calRootID, cal: "year", text: "\(year)", extra: ["cy": .int(year)])
+        let monthID = childCalNode(of: yearID, cal: "month", text: monthName)
+            ?? insertCalNode(parent: yearID, cal: "month", text: monthName, extra: ["cm": .int(month - 1), "cy": .int(year)])
+        let dayID = insertCalNode(parent: monthID, cal: "day", text: title, extra: ["cd": .string(cd)])
+        _ = insertChild(of: dayID)   // an empty bullet so the day is immediately writable
+        ensuredDay = cd
+    }
+
+    private func childCalNode(of parent: String, cal: String, text: String) -> String? {
+        doc?.nodes[parent]?.children?.first { doc?.nodes[$0]?.cal == cal && doc?.nodes[$0]?.text == text }
+    }
+
+    /// Append a calendar node (root/year/month/day) under `parent`, mirroring it into the
+    /// insert op's data (incl. cd/cm/cy) so the server stores a proper calendar node.
+    @discardableResult
+    private func insertCalNode(parent: String, cal: String, text: String, extra: [String: JSONValue] = [:]) -> String {
+        let id = clock.newID()
+        doc?.nodes[id] = RNode(text: text, children: [], cal: cal)
+        if doc?.nodes[parent]?.children == nil { doc?.nodes[parent]?.children = [] }
+        let ord = doc?.nodes[parent]?.children?.count ?? 0
+        doc?.nodes[parent]?.children?.append(id)
+        parentMap[id] = parent
+        var data: [String: JSONValue] = ["text": .string(text), "cal": .string(cal)]
+        for (k, v) in extra { data[k] = v }
+        send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: parent, ord: ord, data: data)])
+        return id
+    }
+
+    private static func ordinalSuffix(_ n: Int) -> String {
+        if (11...13).contains(n % 100) { return "th" }
+        switch n % 10 { case 1: return "st"; case 2: return "nd"; case 3: return "rd"; default: return "th" }
+    }
+
     enum SyncState { case synced, syncing, error }
     private var outbox: [Op] = []
     private var sending = false
@@ -539,7 +605,7 @@ final class AppModel {
     func onForeground() {
         guard user != nil else { return }
         startEvents()
-        Task { await loadDoc() }
+        Task { await loadDoc() }   // loadDoc ensures today's day (catches a day rollover)
     }
 
     // MARK: - Network monitor (instant reconnect)

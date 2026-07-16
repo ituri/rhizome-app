@@ -50,13 +50,18 @@ struct OutlineRow: View {
             .disabled(!hasChildren)
 
             if model.editingID == id {
-                TextField("", text: model.editBinding)
+                // axis: .vertical lets a long line WRAP while typing instead of scrolling off
+                // the edge. The trade-off is that Return now inserts a newline rather than
+                // submitting, so we watch for a newline and turn it into "finish this bullet,
+                // start the next" — the same behaviour the single-line field had via onSubmit.
+                TextField("", text: model.editBinding, axis: .vertical)
                     .font(.rz(16.5))
                     .autocorrectionDisabled()               // stop iOS silently changing words (Sync → Synck)
                     .textInputAutocapitalization(.sentences)
                     .focused($focused, equals: id)
-                    .submitLabel(.next)
-                    .onSubmit {
+                    .onChange(of: model.editText) { _, value in
+                        guard model.editingID == id, value.contains("\n") else { return }
+                        model.editText = value.replacingOccurrences(of: "\n", with: "") // Return, not a literal newline
                         if let next = model.returnKey(on: id) {
                             // let the List render the new row before we focus it
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
