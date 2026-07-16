@@ -123,6 +123,13 @@ struct OutlineRow: View {
                 } else {
                     textDisplay(raw, lineH)
                 }
+                if model.uploadingNodes.contains(id) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Uploading…").font(.rz(13)).foregroundStyle(Color.rzInkFaint)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
+                }
             }
         }
         .fullScreenCover(item: $viewer) { v in ImageViewer(url: v.url) }

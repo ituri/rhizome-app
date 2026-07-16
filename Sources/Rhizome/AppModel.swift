@@ -613,8 +613,13 @@ final class AppModel {
     }
 
     /// Upload image/file bytes and attach them to a node, syncing the new `files` list.
+    /// Bullets whose image is currently uploading (drives a spinner in the row).
+    var uploadingNodes: Set<String> = []
+
     func attachFile(_ data: Data, name: String, contentType: String, to id: String) async {
         guard let api, doc?.nodes[id] != nil else { return }
+        uploadingNodes.insert(id)
+        defer { uploadingNodes.remove(id) }
         do {
             let file = try await api.upload(data, name: name, contentType: contentType)
             var files = doc?.nodes[id]?.files ?? []
