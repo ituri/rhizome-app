@@ -102,7 +102,9 @@ public enum RichText {
             if token.hasPrefix("((") {
                 let id = String(token.dropFirst(2).dropLast(2))
                 let target = doc?.nodes[id]?.text ?? ""
-                append(plainStrip(target), style, accent: true, &out)
+                var s = style
+                s.link = URL(string: "rhizome://n/\(id)")   // tapping a block ref jumps to its bullet
+                append(plainStrip(target), s, accent: true, &out)
             } else if token.hasPrefix("[[") {
                 append(String(token.dropFirst(2).dropLast(2)), style, accent: true, &out)
             } else {
