@@ -74,8 +74,8 @@ final class AppModel {
     }
 
     // Design defaults, shared with the Settings "reset" action.
-    static let defaultFontSize = 16.5
-    static let defaultLineSpacing = 3.0
+    static let defaultFontSize = 15.5
+    static let defaultLineSpacing = 1.0
     static let defaultTheme = AppTheme.auto
     static let defaultAccent = AccentChoice.clay
 
@@ -602,6 +602,18 @@ final class AppModel {
         parentMap[id] = parent
         send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: parent, ord: ord, data: ["text": .string("")])])
         return id
+    }
+
+    /// The most recent modified time across a page and its whole subtree (server-set `m`, ms).
+    func lastModified(of id: String) -> Date? {
+        guard let doc else { return nil }
+        var best: Double = 0
+        var stack = [id]
+        while let cur = stack.popLast() {
+            if let m = doc.nodes[cur]?.m, m > best { best = m }
+            stack.append(contentsOf: doc.nodes[cur]?.children ?? [])
+        }
+        return best > 0 ? Date(timeIntervalSince1970: best / 1000) : nil
     }
 
     func delete(_ id: String) {

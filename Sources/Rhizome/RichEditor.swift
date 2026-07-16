@@ -17,8 +17,8 @@ extension NSAttributedString.Key {
 @MainActor
 enum RichEditor {
     // configurable from Settings (AppModel mirrors the persisted values into these)
-    static var fontSize: CGFloat = 16.5
-    static var lineSpacing: CGFloat = 3
+    static var fontSize: CGFloat = 15.5
+    static var lineSpacing: CGFloat = 1
     // dynamic so the editor's text follows the selected theme (light/dark) and accent
     static var ink: UIColor {
         UIColor { trait in

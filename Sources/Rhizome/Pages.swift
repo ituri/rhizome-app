@@ -7,27 +7,44 @@ struct PagesView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSettings = false
     @State private var path: [String] = []
+    @State private var query = ""
+    @State private var pendingDelete: String?   // page awaiting delete confirmation
 
     private func pageIDs(_ doc: RDoc) -> [String] {
         (doc.nodes[doc.root]?.children ?? []).filter { doc.nodes[$0]?.cal != "root" }
+    }
+
+    /// Fuzzy (subsequence) match: every character of the query appears in order in the title.
+    private func matches(_ query: String, _ title: String) -> Bool {
+        let q = query.lowercased(), t = title.lowercased()
+        guard !q.isEmpty else { return true }
+        var it = t.makeIterator()
+        for ch in q {
+            var found = false
+            while !found, let c = it.next() { if c == ch { found = true } }
+            if !found { return false }
+        }
+        return true
+    }
+
+    private func visiblePages(_ doc: RDoc) -> [String] {
+        pageIDs(doc).filter { matches(query, RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc)) }
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             Group {
                 if let doc = model.doc {
-                    let pages = pageIDs(doc)
-                    if pages.isEmpty {
+                    let pages = visiblePages(doc)
+                    if pageIDs(doc).isEmpty {
                         ContentUnavailableView("No pages yet", systemImage: "doc.text")
+                    } else if pages.isEmpty {
+                        ContentUnavailableView.search(text: query)
                     } else {
-                        List(pages, id: \.self) { id in
-                            NavigationLink(value: id) {
-                                Text(RichText.attributed(doc.nodes[id]?.text ?? "", doc: doc))
-                                    .font(.rz(17))
-                                    .lineLimit(1)
+                        List {
+                            ForEach(pages, id: \.self) { id in
+                                pageRow(id, doc: doc)
                             }
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.rzPaper)
                         }
                         .listStyle(.plain)
                         .paperBackground()
@@ -41,6 +58,7 @@ struct PagesView: View {
             }
             .navigationTitle("Pages")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search pages")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
                 ToolbarItem(placement: .topBarLeading) {
@@ -58,8 +76,42 @@ struct PagesView: View {
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .refreshable { await model.loadDoc() }
+            .confirmationDialog(
+                "Delete this page and everything under it?",
+                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Delete page", role: .destructive) {
+                    if let id = pendingDelete { model.delete(id) }
+                    pendingDelete = nil
+                }
+                Button("Cancel", role: .cancel) { pendingDelete = nil }
+            }
         }
         .handleNodeLinks(path: $path, model: model)
+    }
+
+    @ViewBuilder
+    private func pageRow(_ id: String, doc: RDoc) -> some View {
+        NavigationLink(value: id) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(RichText.attributed(doc.nodes[id]?.text ?? "", doc: doc))
+                    .font(.rz(17))
+                    .lineLimit(1)
+                if let edited = model.lastModified(of: id) {
+                    Text("edited \(edited.formatted(.relative(presentation: .named)))")
+                        .font(.rz(12))
+                        .foregroundStyle(Color.rzInkFaint)
+                }
+            }
+        }
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.rzPaper)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) { pendingDelete = id } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
     }
 }
 

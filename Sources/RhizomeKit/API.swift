@@ -28,13 +28,17 @@ public struct RNode: Codable, Sendable {
     public var collapsed: Bool?
     public var done: Bool?
     public var cal: String?   // "root" | "year" | "month" | "day" on calendar nodes
+    public var m: Double?     // last-modified, ms since epoch (server-set)
+    public var c: Double?     // created, ms since epoch (server-set)
 
     public init(
         text: String? = nil, note: String? = nil, children: [String]? = nil,
-        collapsed: Bool? = nil, done: Bool? = nil, cal: String? = nil
+        collapsed: Bool? = nil, done: Bool? = nil, cal: String? = nil,
+        m: Double? = nil, c: Double? = nil
     ) {
         self.text = text; self.note = note; self.children = children
         self.collapsed = collapsed; self.done = done; self.cal = cal
+        self.m = m; self.c = c
     }
 }
 
