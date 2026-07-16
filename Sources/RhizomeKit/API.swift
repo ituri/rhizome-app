@@ -31,6 +31,13 @@ public struct RFile: Codable, Sendable {
     }
 }
 
+/// One saved version in a page's history.
+public struct RHistoryVersion: Codable, Sendable, Identifiable {
+    public var id: Int
+    public var ts: Double
+    public var device: String?
+}
+
 /// A note that references an asset (backlink).
 public struct RAssetRef: Codable, Sendable, Identifiable {
     public var node: String
@@ -149,6 +156,28 @@ public struct RhizomeAPI: Sendable {
         struct Resp: Decodable { let url: String; let name: String?; let size: Double? }
         let r = try JSONDecoder().decode(Resp.self, from: out)
         return RFile(url: r.url, name: r.name, type: contentType, size: r.size)
+    }
+
+    // MARK: page history
+
+    public func history(graphID: String, pageID: String) async throws -> [RHistoryVersion] {
+        let data = try await get("api/g/\(graphID)/history/\(pageID)")
+        struct R: Decodable { let versions: [RHistoryVersion] }
+        return (try? JSONDecoder().decode(R.self, from: data).versions) ?? []
+    }
+
+    public func historyDoc(graphID: String, pageID: String, versionID: Int) async throws -> RDoc {
+        let data = try await get("api/g/\(graphID)/history/\(pageID)/\(versionID)")
+        struct R: Decodable { let doc: RDoc }
+        return try JSONDecoder().decode(R.self, from: data).doc
+    }
+
+    @discardableResult
+    public func restore(graphID: String, pageID: String, versionID: Int, device: String, deviceName: String) async throws -> Int {
+        struct Body: Encodable { let device: String; let deviceName: String }
+        struct V: Decodable { let version: Int }
+        let data = try await post("api/g/\(graphID)/history/\(pageID)/\(versionID)/restore", body: Body(device: device, deviceName: deviceName))
+        return (try? JSONDecoder().decode(V.self, from: data).version) ?? 0
     }
 
     // MARK: assets

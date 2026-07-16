@@ -122,6 +122,7 @@ struct PagesView: View {
 struct PageView: View {
     @Environment(AppModel.self) private var model
     let pageID: String
+    @State private var showHistory = false
 
     var body: some View {
         Group {
@@ -171,11 +172,15 @@ struct PageView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
             ToolbarItem(placement: .topBarTrailing) {
+                Button { showHistory = true } label: { Image(systemName: "clock.arrow.circlepath") }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     if let new = model.insertChild(of: pageID) { model.beginEdit(new) }
                 } label: { Image(systemName: "plus") }
             }
         }
+        .sheet(isPresented: $showHistory) { PageHistoryView(pageID: model.pageOf(pageID) ?? pageID) }
         .safeAreaInset(edge: .bottom, spacing: 0) { KeyboardAccessory(model: model) }
         .geoAlert(model)
     }

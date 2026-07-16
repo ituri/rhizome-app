@@ -718,6 +718,40 @@ final class AppModel {
         await loadAssets()   // the file is now referenced → moves from Unused to In use
     }
 
+    // MARK: - Page history
+
+    /// The page (top-level page or journal day) that contains `id` — mirrors the server's pageIdOf.
+    func pageOf(_ id: String) -> String? {
+        guard let doc else { return nil }
+        var cur: String? = id
+        while let c = cur {
+            guard let n = doc.nodes[c] else { return nil }
+            if n.cal == "day" { return c }
+            guard let p = parentMap[c] else { return nil }
+            if p == doc.root { return n.cal == "root" ? nil : c }
+            cur = p
+        }
+        return nil
+    }
+
+    func historyVersions(_ pageID: String) async -> [RHistoryVersion] {
+        guard let api, let g = activeGraph?.id else { return [] }
+        return (try? await api.history(graphID: g, pageID: pageID)) ?? []
+    }
+
+    func historyDoc(_ pageID: String, _ versionID: Int) async -> RDoc? {
+        guard let api, let g = activeGraph?.id else { return nil }
+        return try? await api.historyDoc(graphID: g, pageID: pageID, versionID: versionID)
+    }
+
+    func restorePage(_ pageID: String, versionID: Int) async {
+        guard let api, let g = activeGraph?.id else { return }
+        do {
+            _ = try await api.restore(graphID: g, pageID: pageID, versionID: versionID, device: clock.device, deviceName: deviceName)
+            await loadDoc()
+        } catch { errorMessage = String(describing: error) }
+    }
+
     /// Insert a new empty sibling after `id`; returns its id (to focus it).
     @discardableResult
     func insertSibling(after id: String) -> String? {
