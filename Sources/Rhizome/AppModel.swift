@@ -579,6 +579,41 @@ final class AppModel {
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["done": .bool(next)])])
     }
 
+    /// Turn a bullet into a checkable to-do item and back (web `opSetFormat(id,'todo')`).
+    func toggleTodo(_ id: String) {
+        guard let node = doc?.nodes[id] else { return }
+        if node.format == "todo" {
+            doc?.nodes[id]?.format = nil
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), unset: ["format"])])
+        } else {
+            doc?.nodes[id]?.format = "todo"
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["format": .string("todo")])])
+        }
+    }
+
+    /// Absolute URL of an uploaded `/files/…` attachment (loaded with the shared session cookie).
+    func fileURL(_ path: String) -> URL? {
+        guard let base = api?.baseURL else { return nil }
+        return URL(string: path, relativeTo: base)?.absoluteURL
+    }
+
+    /// Upload image/file bytes and attach them to a node, syncing the new `files` list.
+    func attachFile(_ data: Data, name: String, contentType: String, to id: String) async {
+        guard let api, doc?.nodes[id] != nil else { return }
+        do {
+            let file = try await api.upload(data, name: name, contentType: contentType)
+            var files = doc?.nodes[id]?.files ?? []
+            files.append(file)
+            doc?.nodes[id]?.files = files
+            let arr = JSONValue.array(files.map { f in
+                .object(["url": .string(f.url), "name": .string(f.name ?? ""), "type": .string(f.type ?? "")])
+            })
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["files": arr])])
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
     /// Insert a new empty sibling after `id`; returns its id (to focus it).
     @discardableResult
     func insertSibling(after id: String) -> String? {

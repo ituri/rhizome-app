@@ -28,7 +28,10 @@ struct PagesView: View {
     }
 
     private func visiblePages(_ doc: RDoc) -> [String] {
-        pageIDs(doc).filter { matches(query, RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc)) }
+        pageIDs(doc)
+            .filter { matches(query, RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc)) }
+            // most recently edited first (pages without a known edit time sink to the bottom)
+            .sorted { (model.lastModified(of: $0) ?? .distantPast) > (model.lastModified(of: $1) ?? .distantPast) }
     }
 
     var body: some View {

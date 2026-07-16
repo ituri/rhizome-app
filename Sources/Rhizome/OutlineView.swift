@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UIKit
 import RhizomeKit
 
 /// One flattened, visible outline row (a node plus its indentation depth).
@@ -34,6 +36,31 @@ struct OutlineRow: View {
     private var hasChildren: Bool { !(node?.children?.isEmpty ?? true) }
     private var isCollapsed: Bool { node?.collapsed ?? false }
     private var isDone: Bool { node?.done ?? false }
+    private var isTodo: Bool { node?.format == "todo" }
+
+    /// Image / file attachments rendered below the bullet's text.
+    @ViewBuilder
+    private var attachments: some View {
+        if let files = node?.files, !files.isEmpty {
+            ForEach(files, id: \.url) { f in
+                if (f.type ?? "").hasPrefix("image/"), let url = model.fileURL(f.url) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFit()
+                        case .failure: Image(systemName: "photo").foregroundStyle(Color.rzInkFaint)
+                        default: ProgressView()
+                        }
+                    }
+                    .frame(maxWidth: 260, maxHeight: 260, alignment: .leading)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else if let url = model.fileURL(f.url) {
+                    Link(destination: url) {
+                        Label(f.name ?? "file", systemImage: "paperclip").font(.rz(14))
+                    }
+                }
+            }
+        }
+    }
 
     var body: some View {
         _ = model.accent   // re-render this row live when the accent changes
@@ -44,42 +71,56 @@ struct OutlineRow: View {
         // .top: align the bullet with the first line of a possibly-wrapped row, and let the
         // rich editor (a UITextView) sit right next to it.
         return HStack(alignment: .top, spacing: 8) {
-            Button {
-                if hasChildren { model.toggleCollapse(id) }
-            } label: {
-                Image(systemName: hasChildren ? (isCollapsed ? "chevron.right" : "chevron.down") : "circle.fill")
-                    .font(.system(size: hasChildren ? 11 : 5, weight: .semibold))
-                    .foregroundStyle(Color.rzInkFaint)
-                    .frame(width: 14, height: lineH, alignment: .center)
-            }
-            .buttonStyle(.plain)
-            .disabled(!hasChildren)
-
-            if model.editingID == id {
-                // rich inline editor: links/refs/tags render as they do when displayed, long
-                // lines wrap, Return makes a new bullet, and [[ / (( autocomplete at the caret
-                RichTextEditor(model: model, id: id, source: model.editText)
-                    .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
-            } else {
-                // An edit-tap layer BEHIND the text, so tapping anywhere starts editing — while
-                // links/refs in the text (in front) still take their own taps to navigate. A
-                // Text swallows taps, so on a bullet WITHOUT links we turn off the text's hit
-                // testing: otherwise a long, wrapped line (which fills the whole width, leaving no
-                // bare area to hit the layer behind) can't be tapped to edit at all.
-                let raw = node?.text ?? ""
-                let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
-                ZStack(alignment: .topLeading) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { model.beginEdit(id) }
-                    Text(RichText.attributed(raw, doc: model.doc))
-                        .font(.rz(model.fontSize))
-                        .lineSpacing(model.lineSpacing)
-                        .strikethrough(isDone)
-                        .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
-                        .allowsHitTesting(hasLinks)
+            if isTodo {
+                // a to-do renders a checkbox in place of the bullet; tapping it completes the item
+                Button { model.toggleDone(id) } label: {
+                    Image(systemName: isDone ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(isDone ? Color.rzAccent : Color.rzInkFaint)
+                        .frame(width: 14, height: lineH, alignment: .center)
                 }
-                .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading) // stay tappable when empty
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    if hasChildren { model.toggleCollapse(id) }
+                } label: {
+                    Image(systemName: hasChildren ? (isCollapsed ? "chevron.right" : "chevron.down") : "circle.fill")
+                        .font(.system(size: hasChildren ? 11 : 5, weight: .semibold))
+                        .foregroundStyle(Color.rzInkFaint)
+                        .frame(width: 14, height: lineH, alignment: .center)
+                }
+                .buttonStyle(.plain)
+                .disabled(!hasChildren)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                if model.editingID == id {
+                    // rich inline editor: links/refs/tags render as they do when displayed, long
+                    // lines wrap, Return makes a new bullet, and [[ / (( autocomplete at the caret
+                    RichTextEditor(model: model, id: id, source: model.editText)
+                        .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
+                } else {
+                    // An edit-tap layer BEHIND the text, so tapping anywhere starts editing — while
+                    // links/refs in the text (in front) still take their own taps to navigate. A
+                    // Text swallows taps, so on a bullet WITHOUT links we turn off the text's hit
+                    // testing: otherwise a long, wrapped line (which fills the whole width, leaving no
+                    // bare area to hit the layer behind) can't be tapped to edit at all.
+                    let raw = node?.text ?? ""
+                    let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { model.beginEdit(id) }
+                        Text(RichText.attributed(raw, doc: model.doc))
+                            .font(.rz(model.fontSize))
+                            .lineSpacing(model.lineSpacing)
+                            .strikethrough(isDone)
+                            .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
+                            .allowsHitTesting(hasLinks)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading) // stay tappable when empty
+                }
+                attachments
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -102,9 +143,46 @@ struct OutlineRow: View {
 /// is open it shows the autocomplete chips, otherwise the indent / done / geo controls.
 struct KeyboardAccessory: View {
     let model: AppModel
+    @State private var showSourceDialog = false
+    @State private var showCamera = false
+    @State private var showLibrary = false
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var attachTarget: String?   // node to attach to, captured before the picker steals focus
 
+    // The picker/dialog modifiers live here (always in the tree), NOT on `bar` — presenting a
+    // picker resigns the editor, which can clear editingID and remove `bar`; if the presenters
+    // hung off `bar` they'd be torn down mid-present.
     var body: some View {
-        if model.editingID != nil { bar }
+        Group {
+            if model.editingID != nil { bar }
+        }
+        .confirmationDialog("Add image", isPresented: $showSourceDialog, titleVisibility: .visible) {
+            Button("Take Photo") { showCamera = true }
+            Button("Choose from Library") { showLibrary = true }
+            Button("Cancel", role: .cancel) {}
+        }
+        .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
+        .onChange(of: pickerItem) { _, item in
+            guard let item else { return }
+            let target = attachTarget
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) {
+                    attach(img, to: target)
+                }
+                pickerItem = nil
+            }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in attach(image, to: attachTarget) }
+                .ignoresSafeArea()
+        }
+    }
+
+    private var editingFormat: String? { model.editingID.flatMap { model.doc?.nodes[$0]?.format } }
+
+    private func attach(_ image: UIImage, to id: String?) {
+        guard let id, let data = image.jpegData(compressionQuality: 0.85) else { return }
+        Task { await model.attachFile(data, name: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg", to: id) }
     }
 
     private var bar: some View {
@@ -138,8 +216,11 @@ struct KeyboardAccessory: View {
                 Button { if let id = model.editingID { model.indent(id) } } label: {
                     Image(systemName: "arrow.right.to.line")
                 }
-                Button { if let id = model.editingID { model.toggleDone(id) } } label: {
-                    Image(systemName: "checkmark.circle")
+                Button { attachTarget = model.editingID; showSourceDialog = true } label: {
+                    Image(systemName: "photo")
+                }
+                Button { if let id = model.editingID { model.toggleTodo(id) } } label: {
+                    Image(systemName: editingFormat == "todo" ? "checkmark.circle.fill" : "checkmark.circle")
                 }
                 Button { Task { await model.insertGeoLink() } } label: {
                     Image(systemName: model.locating ? "location.fill" : "location")
@@ -153,5 +234,39 @@ struct KeyboardAccessory: View {
         .frame(maxWidth: .infinity, minHeight: 48)
         .background(.regularMaterial)
         .tint(.rzAccent)
+    }
+}
+
+/// A thin wrapper around `UIImagePickerController` for taking a photo with the camera
+/// (SwiftUI has no native camera capture).
+struct CameraPicker: UIViewControllerRepresentable {
+    let onImage: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    @MainActor
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraPicker
+        init(_ parent: CameraPicker) { self.parent = parent }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            if let image = info[.originalImage] as? UIImage { parent.onImage(image) }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
     }
 }

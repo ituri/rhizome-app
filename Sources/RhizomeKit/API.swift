@@ -20,6 +20,16 @@ public struct RMe: Codable, Sendable {
     public let authRequired: Bool?
 }
 
+/// An uploaded attachment on a node (`/files/<id>` url + mime type).
+public struct RFile: Codable, Sendable {
+    public var url: String
+    public var name: String?
+    public var type: String?
+    public init(url: String, name: String? = nil, type: String? = nil) {
+        self.url = url; self.name = name; self.type = type
+    }
+}
+
 /// One outline node. Unknown fields in the server JSON are ignored.
 public struct RNode: Codable, Sendable {
     public var text: String?
@@ -27,18 +37,20 @@ public struct RNode: Codable, Sendable {
     public var children: [String]?
     public var collapsed: Bool?
     public var done: Bool?
-    public var cal: String?   // "root" | "year" | "month" | "day" on calendar nodes
-    public var m: Double?     // last-modified, ms since epoch (server-set)
-    public var c: Double?     // created, ms since epoch (server-set)
+    public var cal: String?    // "root" | "year" | "month" | "day" on calendar nodes
+    public var format: String? // nil = bullet; "todo" renders a checkbox, plus number/h1/quote/…
+    public var files: [RFile]? // image / file attachments
+    public var m: Double?      // last-modified, ms since epoch (server-set)
+    public var c: Double?      // created, ms since epoch (server-set)
 
     public init(
         text: String? = nil, note: String? = nil, children: [String]? = nil,
         collapsed: Bool? = nil, done: Bool? = nil, cal: String? = nil,
-        m: Double? = nil, c: Double? = nil
+        format: String? = nil, files: [RFile]? = nil, m: Double? = nil, c: Double? = nil
     ) {
         self.text = text; self.note = note; self.children = children
         self.collapsed = collapsed; self.done = done; self.cal = cal
-        self.m = m; self.c = c
+        self.format = format; self.files = files; self.m = m; self.c = c
     }
 }
 
@@ -95,6 +107,23 @@ public struct RhizomeAPI: Sendable {
         struct Version: Decodable { let version: Int }
         let data = try await post("api/g/\(graphID)/ops", body: Body(ops: ops, device: device, deviceName: deviceName))
         return (try? JSONDecoder().decode(Version.self, from: data).version) ?? 0
+    }
+
+    /// Upload a file's bytes (the app is single-authed; uploads aren't graph-scoped on the server).
+    /// Returns the stored `/files/<id>` url to attach to a node.
+    public func upload(_ data: Data, name: String, contentType: String) async throws -> RFile {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/upload"), resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [URLQueryItem(name: "name", value: name)]
+        var request = URLRequest(url: comps.url!)
+        request.httpMethod = "POST"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        let out = try await send(request)
+        struct Resp: Decodable { let url: String; let name: String? }
+        let r = try JSONDecoder().decode(Resp.self, from: out)
+        return RFile(url: r.url, name: r.name, type: contentType)
     }
 
     /// Full-text search → matching node ids (server-side FTS).

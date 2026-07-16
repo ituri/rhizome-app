@@ -5,12 +5,20 @@ public enum JSONValue: Codable, Sendable {
     case string(String)
     case bool(Bool)
     case int(Int)
+    case double(Double)
+    case array([JSONValue])
+    case object([String: JSONValue])
+    case null
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
-        if let b = try? c.decode(Bool.self) { self = .bool(b) }
+        if c.decodeNil() { self = .null }
+        else if let b = try? c.decode(Bool.self) { self = .bool(b) }
         else if let i = try? c.decode(Int.self) { self = .int(i) }
-        else { self = .string(try c.decode(String.self)) }
+        else if let d = try? c.decode(Double.self) { self = .double(d) }
+        else if let s = try? c.decode(String.self) { self = .string(s) }
+        else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
+        else { self = .object(try c.decode([String: JSONValue].self)) }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -19,6 +27,10 @@ public enum JSONValue: Codable, Sendable {
         case .string(let s): try c.encode(s)
         case .bool(let b): try c.encode(b)
         case .int(let i): try c.encode(i)
+        case .double(let d): try c.encode(d)
+        case .array(let a): try c.encode(a)
+        case .object(let o): try c.encode(o)
+        case .null: try c.encodeNil()
         }
     }
 }

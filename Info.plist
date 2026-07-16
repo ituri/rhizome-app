@@ -4,5 +4,7 @@
 <dict>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Rhizome fügt deine aktuelle Position als Koordinaten-Link in eine Notiz ein.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Rhizome nutzt die Kamera, um Fotos aufzunehmen und an eine Notiz anzuhängen.</string>
 </dict>
 </plist>
