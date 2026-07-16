@@ -40,6 +40,9 @@ screen) and sign in with your account.
   your devices (web ⇄ iOS).
 - **Quick capture** — the `+` button in the Journal drops a note straight into
   today's Inbox, time-stamped like the `r` shell command.
+- **Share sheet** — a Share Extension registers *Rhizome Inbox* as a share target,
+  so you can send text or a link from any app into today's Inbox. It reuses the
+  app's signed-in session via an App Group (see [Share sheet](#share-sheet)).
 - **Privacy-friendly** — no analytics or tracking SDKs; your notes only ever go to
   the server you sign in to. Ships a `PrivacyInfo.xcprivacy` manifest.
 
@@ -80,6 +83,9 @@ For shipping to TestFlight, see [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
    is no hard-coded default.
 2. **Bundle ID** — change `bundleID` in `xtool.yml` from `org.syslinx.rhizome` to
    something under your own domain.
+3. **App Group** (only needed for the share sheet) — pick a group ID and set it
+   consistently in `AppGroup.id` (`Sources/RhizomeKit/AppGroup.swift`), both
+   `.entitlements` files, and register it with your Apple Developer team.
 
 ### Linux notes
 
@@ -90,17 +96,39 @@ For shipping to TestFlight, see [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
   `libncursesw.so.6`. Symlink it into the toolchain's `usr/lib/swift/linux/`
   directory if the toolchain fails to load `libncurses`.
 
+## Share sheet
+
+A Share Extension (*Rhizome Inbox*) lets you send text or a link from any app into
+today's journal Inbox, time-stamped like the `r` shell command. Instead of a
+compiled-in API token, it **reuses the main app's signed-in session**: the app
+mirrors its session cookie and server URL into a shared **App Group** container
+(`AppGroup.id`), and the extension reads them to POST to `/api/capture` as you.
+
+Setup:
+
+1. The App Group entitlement needs a **paid Apple Developer team** (App Groups
+   aren't available with free personal-team signing). Register the group
+   `group.org.syslinx.rhizome` (or your own ID) with your team.
+2. Keep the ID identical in `Sources/RhizomeKit/AppGroup.swift`,
+   `Rhizome.entitlements` and `RhizomeShare.entitlements`.
+3. Sign in once in the app; the share sheet then works until you sign out.
+
 ## Project layout
 
 ```
-Package.swift                     SwiftPM manifest
-xtool.yml                         xtool manifest (bundle ID, icon)
+Package.swift                     SwiftPM manifest (app + Share Extension)
+xtool.yml                         xtool manifest (bundle ID, icon, extension, entitlements)
 Info.plist                        app Info.plist (permission strings, iPhone-only)
+Rhizome.entitlements              app App Group entitlement
+RhizomeShare-Info.plist           Share Extension Info.plist (share-services)
+RhizomeShare.entitlements         extension App Group entitlement
 Icon.png                          1024×1024 app icon
 docs/TESTFLIGHT.md                guide for shipping to TestFlight
 
 Sources/RhizomeKit/               shared, UI-independent core
   API.swift                       async HTTP client + wire models
+  AppGroup.swift                  shared session/cookie glue for the extension
+  Capture.swift                   POSTs a line to /api/capture (like `r`)
   Config.swift                    accent / background colours
   Ops.swift  RichText.swift  Journal.swift  Highlight.swift  Accent.swift
 
@@ -114,6 +142,9 @@ Sources/Rhizome/                  the app
   PageHistory.swift  References.swift  Navigation.swift
   GeoMap.swift  Location.swift    coordinates + OpenStreetMap
   Attachments.swift  Haptics.swift  Fonts.swift  Theme.swift  LocalStore.swift
+
+Sources/RhizomeShare/
+  ShareViewController.swift       compose sheet → quick-capture into the Inbox
 ```
 
 ## Roadmap
