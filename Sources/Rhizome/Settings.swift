@@ -36,6 +36,7 @@ struct SettingsView: View {
                     if model.user?.isAdmin == true {
                         LabeledContent("Role", value: "Admin")
                     }
+                    NavigationLink("Change password") { ChangePasswordView() }
                 }
 
                 Section("Server") {
@@ -108,7 +109,6 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Require Face ID / Touch ID", isOn: $model.appLock)
-                    NavigationLink("Change password") { ChangePasswordView() }
                 } header: {
                     Text("Security")
                 }

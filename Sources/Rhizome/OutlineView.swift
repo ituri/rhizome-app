@@ -213,6 +213,18 @@ struct KeyboardAccessory: View {
         return UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
     }
 
+    /// A filled circle in the highlight's colour (composited over white → its on-paper pastel),
+    /// as an original-rendering image so the menu shows it in colour.
+    private func hlSwatch(_ h: Highlight) -> Image {
+        let c = h.rgba, a = c.3
+        let color = UIColor(red: c.0 * a + (1 - a), green: c.1 * a + (1 - a), blue: c.2 * a + (1 - a), alpha: 1)
+        let img = UIGraphicsImageRenderer(size: CGSize(width: 18, height: 18)).image { _ in
+            color.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 1, y: 1, width: 16, height: 16)).fill()
+        }
+        return Image(uiImage: img.withRenderingMode(.alwaysOriginal))
+    }
+
     private var bar: some View {
         HStack(spacing: 14) {
             if !model.linkSuggestions.isEmpty {
@@ -253,7 +265,7 @@ struct KeyboardAccessory: View {
                 Menu {
                     ForEach(Highlight.allCases) { h in
                         Button { model.editorHighlight?(h.rawValue) } label: {
-                            Label(h.rawValue.capitalized, systemImage: "circle.fill")
+                            Label { Text(h.rawValue.capitalized) } icon: { hlSwatch(h) }
                         }
                     }
                     Button("None", role: .destructive) { model.editorHighlight?("") }

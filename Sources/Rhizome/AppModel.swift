@@ -464,6 +464,16 @@ final class AppModel {
     }
 
     /// Create a new top-level page with `title`; returns its id.
+    /// Rename a page/bullet — replaces its text with a plain (escaped) title.
+    func renamePage(_ id: String, to title: String) {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard doc?.nodes[id] != nil, !t.isEmpty else { return }
+        let html = Self.escapeHTML(t)
+        doc?.nodes[id]?.text = html
+        if editingID == id { editText = html; editorReload?() }
+        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(html)])])
+    }
+
     private func createPage(title: String) -> String {
         guard let root = doc?.root else { return "" }
         let id = clock.newID()

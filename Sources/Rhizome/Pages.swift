@@ -9,6 +9,8 @@ struct PagesView: View {
     @State private var path: [String] = []
     @State private var query = ""
     @State private var pendingDelete: String?   // page awaiting delete confirmation
+    @State private var renameTarget: String?    // page being renamed
+    @State private var renameText = ""
 
     private func pageIDs(_ doc: RDoc) -> [String] {
         (doc.nodes[doc.root]?.children ?? []).filter { doc.nodes[$0]?.cal != "root" }
@@ -90,6 +92,14 @@ struct PagesView: View {
                 }
                 Button("Cancel", role: .cancel) { pendingDelete = nil }
             }
+            .alert("Rename page", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
+                TextField("Title", text: $renameText)
+                Button("Save") {
+                    if let id = renameTarget { model.renamePage(id, to: renameText) }
+                    renameTarget = nil
+                }
+                Button("Cancel", role: .cancel) { renameTarget = nil }
+            }
         }
         .handleNodeLinks(path: $path, model: model)
     }
@@ -114,6 +124,13 @@ struct PagesView: View {
             Button(role: .destructive) { pendingDelete = id } label: {
                 Label("Delete", systemImage: "trash")
             }
+        }
+        .swipeActions(edge: .leading) {
+            Button {
+                renameText = RichText.plain(doc.nodes[id]?.text ?? "", doc: doc)
+                renameTarget = id
+            } label: { Label("Rename", systemImage: "pencil") }
+            .tint(.blue)
         }
     }
 }
