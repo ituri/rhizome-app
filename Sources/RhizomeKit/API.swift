@@ -86,10 +86,10 @@ public struct RhizomeAPI: Sendable {
 
     /// Send a batch of mutation ops; returns the new server version.
     @discardableResult
-    public func postOps(graphID: String, ops: [Op], device: String) async throws -> Int {
-        struct Body: Encodable { let ops: [Op]; let device: String }
+    public func postOps(graphID: String, ops: [Op], device: String, deviceName: String = "") async throws -> Int {
+        struct Body: Encodable { let ops: [Op]; let device: String; let deviceName: String }
         struct Version: Decodable { let version: Int }
-        let data = try await post("api/g/\(graphID)/ops", body: Body(ops: ops, device: device))
+        let data = try await post("api/g/\(graphID)/ops", body: Body(ops: ops, device: device, deviceName: deviceName))
         return (try? JSONDecoder().decode(Version.self, from: data).version) ?? 0
     }
 

@@ -56,6 +56,15 @@ struct SettingsView: View {
                     Text("New notes added with + are prefixed with the time, like the r command.")
                 }
 
+                Section {
+                    TextField("Device name", text: $model.deviceName)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Device")
+                } footer: {
+                    Text("Shown in the web app's page history, so you can tell which device made a change.")
+                }
+
                 if model.graphs.count > 1 {
                     Section("Switch graph") {
                         ForEach(model.graphs) { graph in

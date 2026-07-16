@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import UIKit
 import Network
 import CoreLocation
 import RhizomeKit
@@ -47,11 +48,17 @@ final class AppModel {
         didSet { UserDefaults.standard.set(captureTimestamp, forKey: "captureTimestamp") }
     }
 
+    /// Human-readable name sent with edits, shown in the web app's page history.
+    var deviceName: String {
+        didSet { UserDefaults.standard.set(deviceName, forKey: "deviceName") }
+    }
+
     init() {
         let saved = UserDefaults.standard.string(forKey: "serverURL")
         serverURLString = saved ?? Config.serverURL.absoluteString
         activeGraphID = UserDefaults.standard.string(forKey: "activeGraphID")
         captureTimestamp = UserDefaults.standard.object(forKey: "captureTimestamp") as? Bool ?? true
+        deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? UIDevice.current.name
     }
 
     var api: RhizomeAPI? {
@@ -732,10 +739,11 @@ final class AppModel {
         sending = true
         let batch = outbox                       // keep it queued until it's acked
         let device = clock.device
+        let dname = deviceName
         let kinds = batch.map(\.kind).joined(separator: ",")
         Task {
             do {
-                version = try await api.postOps(graphID: graphID, ops: batch, device: device)
+                version = try await api.postOps(graphID: graphID, ops: batch, device: device, deviceName: dname)
                 outbox.removeFirst(batch.count)  // drop only the acked prefix (edits during await stay)
                 persistOutbox()
                 lastSync = "\(kinds) → v\(version)"
