@@ -720,8 +720,9 @@ final class AppModel {
 
     // MARK: - Page history
 
-    /// The page (top-level page or journal day) that contains `id` — mirrors the server's pageIdOf.
-    func pageOf(_ id: String) -> String? {
+    /// The page id used for version history (top-level page or journal day) — mirrors the server's
+    /// pageIdOf, including the case where `id` is itself the day/page node.
+    func historyPageOf(_ id: String) -> String? {
         guard let doc else { return nil }
         var cur: String? = id
         while let c = cur {

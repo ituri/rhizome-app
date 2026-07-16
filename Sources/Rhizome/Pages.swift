@@ -180,7 +180,7 @@ struct PageView: View {
                 } label: { Image(systemName: "plus") }
             }
         }
-        .sheet(isPresented: $showHistory) { PageHistoryView(pageID: model.pageOf(pageID) ?? pageID) }
+        .sheet(isPresented: $showHistory) { PageHistoryView(pageID: model.historyPageOf(pageID) ?? pageID) }
         .safeAreaInset(edge: .bottom, spacing: 0) { KeyboardAccessory(model: model) }
         .geoAlert(model)
     }

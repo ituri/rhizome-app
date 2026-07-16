@@ -20,6 +20,12 @@ public struct RMe: Codable, Sendable {
     public let authRequired: Bool?
 }
 
+/// Whether a file should render as an image — decided by its NAME extension (authoritative): a
+/// broken/edited extension (e.g. "Photo.jp") stops it rendering, and a missing mime type doesn't.
+public func looksLikeImage(_ s: String?) -> Bool {
+    (s ?? "").range(of: #"\.(png|jpe?g|gif|webp|svg|bmp|heic|heif|avif)$"#, options: [.regularExpression, .caseInsensitive]) != nil
+}
+
 /// An uploaded attachment on a node (`/files/<id>` url + mime type).
 public struct RFile: Codable, Sendable {
     public var url: String
@@ -29,6 +35,7 @@ public struct RFile: Codable, Sendable {
     public init(url: String, name: String? = nil, type: String? = nil, size: Double? = nil) {
         self.url = url; self.name = name; self.type = type; self.size = size
     }
+    public var isImage: Bool { looksLikeImage(name ?? url) }
 }
 
 /// One saved version in a page's history.
@@ -56,10 +63,7 @@ public struct RAsset: Codable, Sendable, Identifiable {
     public var refs: [RAssetRef]?
     public var missing: Bool?
     public var id: String { url }
-    public var isImage: Bool {
-        if let t = type, t.hasPrefix("image/") { return true }
-        return (name ?? url).range(of: #"\.(png|jpe?g|gif|webp|svg|bmp|heic|heif)$"#, options: [.regularExpression, .caseInsensitive]) != nil
-    }
+    public var isImage: Bool { looksLikeImage(name ?? url) }
 }
 
 /// One outline node. Unknown fields in the server JSON are ignored.

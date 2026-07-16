@@ -46,7 +46,7 @@ struct OutlineRow: View {
     private var attachments: some View {
         if let files = node?.files, !files.isEmpty {
             ForEach(files, id: \.url) { f in
-                if (f.type ?? "").hasPrefix("image/"), let url = model.fileURL(f.url) {
+                if f.isImage, let url = model.fileURL(f.url) {
                     AttachmentImageView(
                         url: url,
                         onDelete: { model.removeFile(f.url, from: id) },
