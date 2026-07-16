@@ -9,6 +9,8 @@ struct AssetsView: View {
     @State private var path: [String] = []
     @State private var confirmDeleteAll = false
     @State private var pickTarget: RAsset?   // unused image awaiting a note to insert into
+    @State private var renameTarget: RAsset? // in-use file being renamed
+    @State private var renameText = ""
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -33,6 +35,16 @@ struct AssetsView: View {
             .task { await model.loadAssets() }
             .refreshable { await model.loadAssets() }
             .sheet(item: $pickTarget) { NotePickerSheet(asset: $0) }
+            .alert("Rename file", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } }),
+                   presenting: renameTarget) { a in
+                TextField("Name", text: $renameText)
+                Button("Save") {
+                    let url = a.url, name = renameText
+                    Task { await model.renameAsset(url, to: name) }
+                    renameTarget = nil
+                }
+                Button("Cancel", role: .cancel) { renameTarget = nil }
+            }
         }
     }
 
@@ -48,6 +60,12 @@ struct AssetsView: View {
                             Button(role: .destructive) { Task { await model.deleteAsset(a.url) } } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button { renameText = a.name ?? ""; renameTarget = a } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            .tint(.blue)
                         }
                 }
             }

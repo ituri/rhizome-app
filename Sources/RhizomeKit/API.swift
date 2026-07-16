@@ -164,6 +164,11 @@ public struct RhizomeAPI: Sendable {
         _ = try await post("api/g/\(graphID)/assets/delete", body: Body(url: url))
     }
 
+    public func renameAsset(graphID: String, url: String, name: String) async throws {
+        struct Body: Encodable { let url: String; let name: String }
+        _ = try await post("api/g/\(graphID)/assets/rename", body: Body(url: url, name: name))
+    }
+
     public func orphans(graphID: String) async throws -> [RAsset] {
         let data = try await get("api/g/\(graphID)/assets/orphans")
         struct R: Decodable { let orphans: [RAsset] }
