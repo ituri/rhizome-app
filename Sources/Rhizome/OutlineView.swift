@@ -128,13 +128,9 @@ struct KeyboardAccessory: View {
                     Image(systemName: "checkmark.circle")
                 }
                 Button { Task { await model.insertGeoLink() } } label: {
-                    if model.locating {
-                        ProgressView().controlSize(.small)   // shows it's working (a fix can take a few seconds)
-                    } else {
-                        Image(systemName: "location")
-                    }
+                    Image(systemName: model.locating ? "location.fill" : "location")
+                        .foregroundStyle(Color.rzAccent)   // always tappable + accent (never a dead black button)
                 }
-                .disabled(model.locating)
                 Spacer()
                 Button("Done") { model.endEditing() }.fontWeight(.semibold)
             }
