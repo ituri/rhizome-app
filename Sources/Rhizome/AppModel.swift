@@ -390,8 +390,7 @@ final class AppModel {
     /// bullet you started from (find-or-create the coordinates page). Appending — rather than a
     /// caret splice — means it works whether or not the editor kept focus during the fetch.
     func insertGeoLink() async {
-        guard !locating else { geoMessage = "Läuft schon (locating=true)"; return }
-        guard let id = editingID else { geoMessage = "Nicht im Editiermodus (editingID = nil)"; return }
+        guard !locating, let id = editingID else { return }
         locationProvider.start()
         // use the warm fix if we have one; otherwise poll briefly (bounded — never hangs)
         if locationProvider.current == nil {
@@ -402,14 +401,13 @@ final class AppModel {
             }
         }
         guard let coord = locationProvider.current else {
-            geoMessage = "Kein Standort-Fix. Berechtigung: \(locationProvider.authStatusText)"
+            geoMessage = "Standort nicht verfügbar — kurz warten, dann erneut 📍"
             return
         }
         let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
         let pageID = findOrCreatePage(title: title)
-        guard !pageID.isEmpty else { geoMessage = "Seite konnte nicht angelegt werden"; return }
+        guard !pageID.isEmpty else { return }
         appendGeo(to: id, source: "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
-        geoMessage = "Eingefügt: \(title)"   // confirm success so we know the whole path ran
     }
 
     /// Append a source fragment to a bullet (separated by a space) and sync. If that bullet is
