@@ -196,12 +196,21 @@ struct KeyboardAccessory: View {
     private var editingFormat: String? { model.editingID.flatMap { model.doc?.nodes[$0]?.format } }
 
     private func attach(_ image: UIImage, to id: String?) {
-        guard let id, let data = image.jpegData(compressionQuality: 0.85) else { return }
+        guard let id else { return }
+        let scaled = scaledDown(image, percent: model.imageScalePercent)
+        guard let data = scaled.jpegData(compressionQuality: 0.85) else { return }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd HH.mm.ss"
         let name = "Photo \(f.string(from: Date())).jpg"
         Task { await model.attachFile(data, name: name, contentType: "image/jpeg", to: id) }
+    }
+
+    private func scaledDown(_ image: UIImage, percent: Double) -> UIImage {
+        let s = percent / 100
+        guard s > 0, s < 1 else { return image }
+        let size = CGSize(width: image.size.width * s, height: image.size.height * s)
+        return UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
     }
 
     private var bar: some View {
@@ -240,6 +249,16 @@ struct KeyboardAccessory: View {
                 }
                 Button { if let id = model.editingID { model.toggleTodo(id) } } label: {
                     Image(systemName: editingFormat == "todo" ? "checkmark.circle.fill" : "checkmark.circle")
+                }
+                Menu {
+                    ForEach(Highlight.allCases) { h in
+                        Button { model.editorHighlight?(h.rawValue) } label: {
+                            Label(h.rawValue.capitalized, systemImage: "circle.fill")
+                        }
+                    }
+                    Button("None", role: .destructive) { model.editorHighlight?("") }
+                } label: {
+                    Image(systemName: "highlighter")
                 }
                 Button { Task { await model.insertGeoLink() } } label: {
                     Image(systemName: model.locating ? "location.fill" : "location")

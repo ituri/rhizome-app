@@ -126,6 +126,11 @@ public struct RhizomeAPI: Sendable {
         _ = try await post("api/logout", body: [String: String]())
     }
 
+    public func changePassword(current: String, next: String) async throws {
+        struct Body: Encodable { let current: String; let next: String }
+        _ = try await post("api/account/password", body: Body(current: current, next: next))
+    }
+
     public func me() async throws -> RMe {
         let data = try await get("api/me")
         return try JSONDecoder().decode(RMe.self, from: data)

@@ -16,7 +16,15 @@ struct RhizomeApp: App {
                 .task { await model.bootstrap() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.onForeground() }   // reconnect + flush the offline queue
+            switch phase {
+            case .active:
+                model.onForeground()               // reconnect + flush the offline queue
+                Task { await model.unlock() }       // prompt Face ID if we're locked
+            case .background:
+                model.lockIfEnabled()               // re-lock when backgrounded
+            default:
+                break
+            }
         }
     }
 }

@@ -95,6 +95,24 @@ struct SettingsView: View {
                     Text("Shown in the web app's page history, so you can tell which device made a change.")
                 }
 
+                Section {
+                    Stepper(value: $model.imageScalePercent, in: 20...100, step: 10) {
+                        LabeledContent("Image size", value: "\(Int(model.imageScalePercent)) %")
+                    }
+                    Toggle("Haptic feedback", isOn: $model.haptics)
+                } header: {
+                    Text("Uploads & feedback")
+                } footer: {
+                    Text("Downscale photos before upload to save space (100 % = full size).")
+                }
+
+                Section {
+                    Toggle("Require Face ID / Touch ID", isOn: $model.appLock)
+                    NavigationLink("Change password") { ChangePasswordView() }
+                } header: {
+                    Text("Security")
+                }
+
                 if model.graphs.count > 1 {
                     Section("Switch graph") {
                         ForEach(model.graphs) { graph in
@@ -155,5 +173,48 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+}
+
+/// Change the signed-in account's password (POST /api/account/password).
+struct ChangePasswordView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var current = ""
+    @State private var next = ""
+    @State private var confirm = ""
+    @State private var error: String?
+    @State private var busy = false
+
+    private var valid: Bool { !current.isEmpty && next.count >= 6 && next == confirm }
+
+    var body: some View {
+        Form {
+            Section {
+                SecureField("Current password", text: $current)
+                SecureField("New password", text: $next)
+                SecureField("Confirm new password", text: $confirm)
+            } footer: {
+                if let error { Text(error).foregroundStyle(.red) }
+                else if !next.isEmpty && next.count < 6 { Text("New password must be at least 6 characters.") }
+                else if !confirm.isEmpty && next != confirm { Text("Passwords don't match.") }
+            }
+            Section {
+                Button {
+                    busy = true; error = nil
+                    Task {
+                        let e = await model.changePassword(current: current, next: next)
+                        busy = false
+                        if let e { error = e } else { dismiss() }
+                    }
+                } label: {
+                    if busy { ProgressView() } else { Text("Change password") }
+                }
+                .disabled(!valid || busy)
+            }
+        }
+        .paperBackground()
+        .navigationTitle("Change password")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

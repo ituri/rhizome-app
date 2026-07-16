@@ -4,6 +4,7 @@ import SwiftUI
 import UIKit
 import Network
 import CoreLocation
+import LocalAuthentication
 import RhizomeKit
 
 /// What a `[[` / `((` autocomplete is currently linking to.
@@ -73,6 +74,40 @@ final class AppModel {
         didSet { UserDefaults.standard.set(accent.rawValue, forKey: "accent"); RZTheme.accent = accent }
     }
 
+    /// Downscale uploaded images to this percent of their original dimensions (100 = full size).
+    var imageScalePercent: Double {
+        didSet { UserDefaults.standard.set(imageScalePercent, forKey: "imageScalePercent") }
+    }
+
+    /// Haptic feedback on actions (done, delete, …).
+    var haptics: Bool {
+        didSet { UserDefaults.standard.set(haptics, forKey: "haptics"); Haptics.enabled = haptics }
+    }
+
+    /// Require Face ID / Touch ID to open the app.
+    var appLock: Bool {
+        didSet { UserDefaults.standard.set(appLock, forKey: "appLock"); if !appLock { locked = false } }
+    }
+
+    /// Runtime lock state (not persisted): true while the app is waiting for biometric unlock.
+    var locked = false
+
+    /// Re-lock when the app goes to the background (if the lock is enabled).
+    func lockIfEnabled() { if appLock { locked = true } }
+
+    /// Prompt Face ID / Touch ID (or device passcode) to unlock.
+    func unlock() async {
+        guard locked else { return }
+        let ctx = LAContext()
+        ctx.localizedFallbackTitle = "Enter Passcode"
+        var err: NSError?
+        let policy: LAPolicy = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
+            ? .deviceOwnerAuthenticationWithBiometrics : .deviceOwnerAuthentication
+        if let ok = try? await ctx.evaluatePolicy(policy, localizedReason: "Unlock Rhizome"), ok {
+            locked = false
+        }
+    }
+
     // Design defaults, shared with the Settings "reset" action.
     static let defaultFontSize = 15.5
     static let defaultLineSpacing = 1.0
@@ -97,9 +132,14 @@ final class AppModel {
         lineSpacing = UserDefaults.standard.object(forKey: "lineSpacing") as? Double ?? Self.defaultLineSpacing
         theme = UserDefaults.standard.string(forKey: "theme").flatMap(AppTheme.init) ?? Self.defaultTheme
         accent = UserDefaults.standard.string(forKey: "accent").flatMap(AccentChoice.init) ?? Self.defaultAccent
+        imageScalePercent = UserDefaults.standard.object(forKey: "imageScalePercent") as? Double ?? 100
+        haptics = UserDefaults.standard.object(forKey: "haptics") as? Bool ?? true
+        appLock = UserDefaults.standard.object(forKey: "appLock") as? Bool ?? false
         RichEditor.fontSize = CGFloat(fontSize)
         RichEditor.lineSpacing = CGFloat(lineSpacing)
         RZTheme.accent = accent
+        Haptics.enabled = haptics
+        locked = appLock   // require an unlock on cold launch when the lock is on
     }
 
     var api: RhizomeAPI? {
@@ -154,6 +194,13 @@ final class AppModel {
         if let api { try? await api.logout() }
         user = nil; graphs = []; doc = nil; version = 0
         phase = .signedOut
+    }
+
+    /// Change the account password. Returns nil on success, else an error message.
+    func changePassword(current: String, next: String) async -> String? {
+        guard let api else { return "No server configured." }
+        do { try await api.changePassword(current: current, next: next); return nil }
+        catch { return String(describing: error) }
     }
 
     func selectGraph(_ id: String) async {
@@ -218,6 +265,10 @@ final class AppModel {
     // the SwiftUI view alone doesn't reliably dismiss the UIKit keyboard).
     @ObservationIgnored var editorResign: (@MainActor () -> Void)?
     func registerEditorResign(_ resign: @MainActor @escaping () -> Void) { editorResign = resign }
+
+    // Apply a highlight colour name ("" = clear) to the editor's current selection.
+    @ObservationIgnored var editorHighlight: (@MainActor (String) -> Void)?
+    func registerEditorHighlight(_ f: @MainActor @escaping (String) -> Void) { editorHighlight = f }
 
     /// The editor produced a new source string for the current row → buffer + debounce-sync.
     func onEditorText(_ source: String) {
@@ -576,6 +627,7 @@ final class AppModel {
         guard let node = doc?.nodes[id] else { return }
         let next = !(node.done ?? false)
         doc?.nodes[id]?.done = next
+        if next { Haptics.success() } else { Haptics.impact(.light) }
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["done": .bool(next)])])
     }
 
@@ -792,6 +844,7 @@ final class AppModel {
 
     func delete(_ id: String) {
         guard let doc else { return }
+        Haptics.impact(.rigid)
         var toRemove: Set<String> = []
         var stack = [id]
         while let cur = stack.popLast() {

@@ -6,5 +6,7 @@
     <string>Rhizome fügt deine aktuelle Position als Koordinaten-Link in eine Notiz ein.</string>
     <key>NSCameraUsageDescription</key>
     <string>Rhizome nutzt die Kamera, um Fotos aufzunehmen und an eine Notiz anzuhängen.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Rhizome nutzt Face ID, um die App zu entsperren.</string>
 </dict>
 </plist>

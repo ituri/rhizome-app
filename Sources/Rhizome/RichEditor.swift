@@ -8,6 +8,8 @@ extension NSAttributedString.Key {
     static let rzSource = NSAttributedString.Key("rzSource")
     /// Inline format flags on a plain run — a sorted subset of "bisc" (bold/italic/strike/code).
     static let rzFormat = NSAttributedString.Key("rzFormat")
+    /// A highlight colour name (e.g. "yellow") on a run → serialized as `<span class="hl-…">`.
+    static let rzHighlight = NSAttributedString.Key("rzHighlight")
 }
 
 /// Bridges a Rhizome node's stored HTML source ⇄ an editable `NSAttributedString`, so links,
@@ -67,6 +69,7 @@ enum RichEditor {
         let chars = Array(raw)
         var i = 0
         var fmt = ""
+        var hl = ""   // current highlight colour name (from <span class="hl-…">)
         func setFmt(_ c: Character, _ on: Bool) {
             var set = Set(fmt); if on { set.insert(c) } else { set.remove(c) }; fmt = String(set.sorted())
         }
@@ -77,7 +80,7 @@ enum RichEditor {
                 let base = (closing ? String(tag.dropFirst()) : tag).split(whereSeparator: { $0 == " " }).first.map(String.init) ?? ""
                 if base == "a", !closing, let end = closeTagRange("a", chars, close + 1) {
                     let inner = String(chars[(close + 1)..<end.open])
-                    appendToken(out, display: plainStrip(inner), source: String(chars[i..<end.after]), fallback: "link")
+                    appendToken(out, display: plainStrip(inner), source: String(chars[i..<end.after]), fallback: "link", hl: hl)
                     i = end.after
                     continue
                 }
@@ -86,15 +89,16 @@ enum RichEditor {
                 case "i", "em": setFmt("i", !closing)
                 case "s", "strike", "del": setFmt("s", !closing)
                 case "code": setFmt("c", !closing)
+                case "span": hl = closing ? "" : (Highlight.inClass(tag)?.rawValue ?? hl)
                 default: break
                 }
                 i = close + 1
             } else if chars[i] == "<" {
-                appendPlain(out, String(chars[i...]), fmt, doc); break
+                appendPlain(out, String(chars[i...]), fmt, hl, doc); break
             } else {
                 var j = i
                 while j < chars.count, chars[j] != "<" { j += 1 }
-                appendPlain(out, String(chars[i..<j]), fmt, doc)
+                appendPlain(out, String(chars[i..<j]), fmt, hl, doc)
                 i = j
             }
         }
@@ -104,36 +108,37 @@ enum RichEditor {
         return out
     }
 
-    private static func appendPlain(_ out: NSMutableAttributedString, _ text: String, _ fmt: String, _ doc: RDoc?) {
+    private static func appendPlain(_ out: NSMutableAttributedString, _ text: String, _ fmt: String, _ hl: String, _ doc: RDoc?) {
         let decoded = decodeEntities(text)
-        guard let re = tokenRE else { out.append(styled(decoded, fmt)); return }
+        guard let re = tokenRE else { out.append(styled(decoded, fmt, hl: hl)); return }
         let ns = decoded as NSString
         var last = 0
         for m in re.matches(in: decoded, range: NSRange(location: 0, length: ns.length)) {
             if m.range.location > last {
-                out.append(styled(ns.substring(with: NSRange(location: last, length: m.range.location - last)), fmt))
+                out.append(styled(ns.substring(with: NSRange(location: last, length: m.range.location - last)), fmt, hl: hl))
             }
             let tok = ns.substring(with: m.range)
             if tok.hasPrefix("((") {
                 let id = String(tok.dropFirst(2).dropLast(2))
-                appendToken(out, display: plainStrip(doc?.nodes[id]?.text ?? ""), source: tok, fallback: "ref")
+                appendToken(out, display: plainStrip(doc?.nodes[id]?.text ?? ""), source: tok, fallback: "ref", hl: hl)
             } else if tok.hasPrefix("[[") {
                 let inner = String(tok.dropFirst(2).dropLast(2))
                 let label = inner.contains("|") ? String(inner.split(separator: "|").last ?? "") : inner
-                appendToken(out, display: label, source: tok, fallback: "link")
+                appendToken(out, display: label, source: tok, fallback: "link", hl: hl)
             } else {
-                out.append(styled(tok, fmt, accented: true)) // #tag: accented but editable (no source)
+                out.append(styled(tok, fmt, hl: hl, accented: true)) // #tag: accented but editable (no source)
             }
             last = m.range.location + m.range.length
         }
-        if last < ns.length { out.append(styled(ns.substring(from: last), fmt)) }
+        if last < ns.length { out.append(styled(ns.substring(from: last), fmt, hl: hl)) }
     }
 
-    private static func styled(_ s: String, _ fmt: String, accented: Bool = false) -> NSAttributedString {
+    private static func styled(_ s: String, _ fmt: String, hl: String = "", accented: Bool = false) -> NSAttributedString {
         guard !s.isEmpty else { return NSAttributedString() }
         var attrs: [NSAttributedString.Key: Any] = [.font: font(fmt), .foregroundColor: accented ? accent : ink]
         if !fmt.isEmpty { attrs[.rzFormat] = fmt }
         if fmt.contains("s") { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+        if let h = Highlight(rawValue: hl) { attrs[.rzHighlight] = hl; attrs[.backgroundColor] = h.uiColor }
         return NSAttributedString(string: s, attributes: attrs)
     }
 
@@ -141,9 +146,10 @@ enum RichEditor {
         [.font: font(), .foregroundColor: accent, .underlineStyle: NSUnderlineStyle.single.rawValue]
     }
 
-    private static func appendToken(_ out: NSMutableAttributedString, display: String, source: String, fallback: String) {
+    private static func appendToken(_ out: NSMutableAttributedString, display: String, source: String, fallback: String, hl: String = "") {
         var attrs = tokenAttributes()
         attrs[.rzSource] = source
+        if let h = Highlight(rawValue: hl) { attrs[.rzHighlight] = hl; attrs[.backgroundColor] = h.uiColor }
         out.append(NSAttributedString(string: display.isEmpty ? fallback : display, attributes: attrs))
     }
 
@@ -152,12 +158,17 @@ enum RichEditor {
     static func serialize(_ attr: NSAttributedString) -> String {
         var out = ""
         attr.enumerateAttributes(in: NSRange(location: 0, length: attr.length), options: []) { attrs, range, _ in
+            var piece: String
             if let src = attrs[.rzSource] as? String {
-                out += src
+                piece = src
             } else {
                 let text = (attr.string as NSString).substring(with: range)
-                out += wrap(escapeHTML(text), attrs[.rzFormat] as? String ?? "")
+                piece = wrap(escapeHTML(text), attrs[.rzFormat] as? String ?? "")
             }
+            if let hl = attrs[.rzHighlight] as? String, Highlight(rawValue: hl) != nil {
+                piece = "<span class=\"hl-\(hl)\">\(piece)</span>"
+            }
+            out += piece
         }
         return out
     }
@@ -245,6 +256,7 @@ struct RichTextEditor: UIViewRepresentable {
         model.registerEditor { [weak coord = context.coordinator] s in coord?.insertSuggestion(s) }
         model.registerEditorReload { [weak coord = context.coordinator] in coord?.reloadFromModel() }
         model.registerEditorResign { [weak tv] in _ = tv?.resignFirstResponder() }
+        model.registerEditorHighlight { [weak coord = context.coordinator] name in coord?.applyHighlight(name) }
         return tv
         // NB: the keyboard bar lives as a SwiftUI .safeAreaInset(KeyboardAccessory) in the views
         // now — a UIHostingController hosted as inputAccessoryView didn't receive button taps.
@@ -393,6 +405,23 @@ struct RichTextEditor: UIViewRepresentable {
             lastSource = model.editText
             tv.selectedRange = NSRange(location: tv.attributedText.length, length: 0)
             tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
+        }
+
+        /// Apply (or, for "", remove) a highlight colour on the current selection.
+        func applyHighlight(_ name: String) {
+            guard let tv = textView, tv.selectedRange.length > 0 else { return }
+            let sel = tv.selectedRange
+            let m = NSMutableAttributedString(attributedString: tv.attributedText)
+            if let h = Highlight(rawValue: name) {
+                m.addAttribute(.rzHighlight, value: name, range: sel)
+                m.addAttribute(.backgroundColor, value: h.uiColor, range: sel)
+            } else {
+                m.removeAttribute(.rzHighlight, range: sel)
+                m.removeAttribute(.backgroundColor, range: sel)
+            }
+            tv.attributedText = m
+            tv.selectedRange = sel
+            textViewDidChange(tv)   // re-serialize + sync
         }
     }
 }

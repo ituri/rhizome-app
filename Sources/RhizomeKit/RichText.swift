@@ -31,6 +31,12 @@ public enum RichText {
     private struct Style {
         var bold = false, italic = false, strike = false, code = false
         var link: URL?
+        var highlight: Highlight?
+    }
+
+    private static func hlFrom(tag: String) -> Highlight? {
+        guard let r = tag.range(of: #"class\s*=\s*["']([^"']*)["']"#, options: .regularExpression) else { return nil }
+        return Highlight.inClass(String(tag[r]))
     }
 
     public static func attributed(_ raw: String, doc: RDoc? = nil) -> AttributedString {
@@ -81,6 +87,7 @@ public enum RichText {
         case "i", "em": style.italic = true
         case "s", "strike", "del": style.strike = true
         case "code": style.code = true
+        case "span": if let h = hlFrom(tag: tag) { style.highlight = h }   // <span class="hl-…">
         case "br", "hr": return       // void: no push (kept simple; newlines are rare inline)
         default: break                // unknown open tag → push a copy so its close balances
         }
@@ -141,6 +148,7 @@ public enum RichText {
             piece.foregroundColor = accent
             if let url = style.link { piece.link = url; piece.underlineStyle = nil }
         }
+        if let h = style.highlight { piece.backgroundColor = h.color }
         #endif
         out.append(piece)
     }
