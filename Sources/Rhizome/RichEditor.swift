@@ -222,7 +222,7 @@ struct RichTextEditor: UIViewRepresentable {
         tv.setContentHuggingPriority(.required, for: .vertical)
         context.coordinator.textView = tv
         model.registerEditor { [weak coord = context.coordinator] s in coord?.insertSuggestion(s) }
-        model.registerTokenInserter { [weak coord = context.coordinator] d, s in coord?.insertTokenAtCaret(display: d, source: s) }
+        model.registerEditorReload { [weak coord = context.coordinator] in coord?.reloadFromModel() }
         model.registerEditorResign { [weak tv] in _ = tv?.resignFirstResponder() }
 
         // The keyboard bar (indent controls + [[/(( suggestion chips) — a SwiftUI
@@ -240,8 +240,12 @@ struct RichTextEditor: UIViewRepresentable {
 
     func updateUIView(_ uiView: UITextView, context: Context) {
         context.coordinator.syncExternal(uiView)
-        // this row is the one being edited → take the keyboard (idiomatic representable focus)
-        if model.editingID == id, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
+        // this row is the one being edited → take the keyboard (idiomatic representable focus).
+        // On Return the new row's view may not be in a window yet, so becomeFirstResponder fails;
+        // retry next runloop via the coordinator so focus (and the keyboard) carries over.
+        if model.editingID == id, !uiView.isFirstResponder, !uiView.becomeFirstResponder() {
+            Task { @MainActor [weak coord = context.coordinator] in _ = coord?.textView?.becomeFirstResponder() }
+        }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
@@ -302,7 +306,7 @@ struct RichTextEditor: UIViewRepresentable {
         }
 
         func textView(_ tv: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-            if text == "\n" { model.returnFromEditor(); return false } // Return → finish this bullet, start the next
+            if text == "\n" || text == "\r" { model.returnFromEditor(); return false } // Return → finish this bullet, start the next
             if text.isEmpty { // deletion: remove a touched token whole rather than one char of it
                 var del = range
                 if range.length == 0, range.location > 0 { del = NSRange(location: range.location - 1, length: 1) }
@@ -367,20 +371,13 @@ struct RichTextEditor: UIViewRepresentable {
             textViewDidChange(tv)
         }
 
-        /// Insert an atomic token (e.g. the geo link) at the caret, no trigger to replace.
-        func insertTokenAtCaret(display: String, source: String) {
-            guard let tv = textView, !source.isEmpty else { return }
-            let caret = min(tv.selectedRange.location, tv.attributedText.length)
-            var attrs = RichEditor.tokenAttributes()
-            attrs[.rzSource] = source
-            let token = NSMutableAttributedString(string: display, attributes: attrs)
-            token.append(NSAttributedString(string: " ", attributes: [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]))
-            let m = NSMutableAttributedString(attributedString: tv.attributedText)
-            m.replaceCharacters(in: NSRange(location: caret, length: 0), with: token)
-            tv.attributedText = m
-            tv.selectedRange = NSRange(location: caret + token.length, length: 0)
+        /// Re-render from the model's source after it changed out-of-band (geo append), caret at end.
+        func reloadFromModel() {
+            guard let tv = textView else { return }
+            tv.attributedText = RichEditor.render(model.editText, doc: model.doc)
+            lastSource = model.editText
+            tv.selectedRange = NSRange(location: tv.attributedText.length, length: 0)
             tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
-            textViewDidChange(tv)
         }
     }
 }
