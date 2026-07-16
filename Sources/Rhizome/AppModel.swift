@@ -570,7 +570,7 @@ final class AppModel {
     func linkedCoords(in text: String) -> (lat: Double, lon: Double)? {
         guard text.contains("#/n/") else { return nil }
         let ns = text as NSString
-        guard let re = try? NSRegularExpression(pattern: #"href=\"#/n/([A-Za-z0-9_-]+)\""#) else { return nil }
+        guard let re = try? NSRegularExpression(pattern: "href=\"#/n/([A-Za-z0-9_-]+)\"") else { return nil }
         for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             if let c = pageCoords(ns.substring(with: m.range(at: 1))) { return c }
         }
