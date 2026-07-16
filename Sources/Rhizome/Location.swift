@@ -14,6 +14,18 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
 
+    /// Human-readable auth status (for the geo diagnostic alert).
+    var authStatusText: String {
+        switch manager.authorizationStatus {
+        case .notDetermined: return "notDetermined"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .authorizedWhenInUse: return "whenInUse"
+        case .authorizedAlways: return "always"
+        @unknown default: return "unknown"
+        }
+    }
+
     /// Begin warming up (called when editing starts): prompt for permission if needed and start
     /// standard updates so `current` fills in within a second or two.
     func start() {

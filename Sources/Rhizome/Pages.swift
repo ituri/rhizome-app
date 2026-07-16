@@ -121,5 +121,6 @@ struct PageView: View {
                 } label: { Image(systemName: "plus") }
             }
         }
+        .geoAlert(model)
     }
 }

@@ -152,6 +152,7 @@ final class AppModel {
     var linkSuggestions: [LinkSuggestion] = []   // active [[ / (( autocomplete matches
     var linkSuggestKind: LinkKind?
     var locating = false                          // geo button is waiting for a fix
+    var geoMessage: String?                       // transient status/diagnostic shown after a geo tap
     @ObservationIgnored private let locationProvider = LocationProvider()
     private var flushTask: Task<Void, Never>?
 
@@ -389,7 +390,8 @@ final class AppModel {
     /// bullet you started from (find-or-create the coordinates page). Appending — rather than a
     /// caret splice — means it works whether or not the editor kept focus during the fetch.
     func insertGeoLink() async {
-        guard let id = editingID, !locating else { return }
+        guard !locating else { return }
+        guard let id = editingID else { geoMessage = "Nicht im Editiermodus (editingID = nil)"; return }
         locationProvider.start()
         // use the warm fix if we have one; otherwise poll briefly (bounded — never hangs)
         if locationProvider.current == nil {
@@ -400,13 +402,14 @@ final class AppModel {
             }
         }
         guard let coord = locationProvider.current else {
-            errorMessage = "Standort nicht verfügbar — Zugriff erlaubt?"
+            geoMessage = "Kein Standort-Fix. Berechtigung: \(locationProvider.authStatusText)"
             return
         }
         let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
         let pageID = findOrCreatePage(title: title)
-        guard !pageID.isEmpty else { return }
+        guard !pageID.isEmpty else { geoMessage = "Seite konnte nicht angelegt werden"; return }
         appendGeo(to: id, source: "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
+        geoMessage = "Eingefügt: \(title)"   // confirm success so we know the whole path ran
     }
 
     /// Append a source fragment to a bullet (separated by a space) and sync. If that bullet is
