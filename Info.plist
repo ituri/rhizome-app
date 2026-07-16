@@ -8,5 +8,7 @@
     <string>Rhizome nutzt die Kamera, um Fotos aufzunehmen und an eine Notiz anzuhängen.</string>
     <key>NSFaceIDUsageDescription</key>
     <string>Rhizome nutzt Face ID, um die App zu entsperren.</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
 </dict>
 </plist>

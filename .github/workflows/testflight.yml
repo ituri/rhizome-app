@@ -1,0 +1,105 @@
+name: TestFlight
+
+# Builds the app on a macOS runner and uploads it to TestFlight.
+# Trigger: push a version tag (e.g. `git tag v1.0.3 && git push --tags`) or run manually.
+#
+# One-time setup (see docs/TESTFLIGHT.md) — add these repo secrets:
+#   DIST_CERT_P12_BASE64        Apple Distribution cert + private key, exported as .p12, base64
+#   DIST_CERT_PASSWORD          password for that .p12
+#   APP_PROVISION_PROFILE_BASE64  App Store profile for org.syslinx.rhizome (.mobileprovision, base64)
+#   EXT_PROVISION_PROFILE_BASE64  App Store profile for org.syslinx.rhizome.Share (.mobileprovision, base64)
+#   APP_PROFILE_NAME           the exact name of the app profile (as shown in the portal)
+#   EXT_PROFILE_NAME           the exact name of the extension profile
+#   APPLE_TEAM_ID              your 10-char Team ID
+#   ASC_KEY_ID                 App Store Connect API key ID
+#   ASC_ISSUER_ID              App Store Connect API issuer ID
+#   ASC_KEY_P8_BASE64          the App Store Connect API key (.p8), base64
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    env:
+      PROJECT: Rhizome.xcodeproj
+      SCHEME: Rhizome
+      APP_BUNDLE_ID: org.syslinx.rhizome
+      EXT_BUNDLE_ID: org.syslinx.rhizome.Share
+    steps:
+      - uses: actions/checkout@v4
+
+      # The app targets the iOS 26 SDK — pick the newest Xcode the runner has.
+      - name: Select newest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Install xtool
+        run: brew install xtool-org/tap/xtool
+
+      # Turn the SwiftPM package into an Xcode project we can archive.
+      - name: Generate Xcode project
+        run: xtool dev generate-xcode-project
+
+      - name: Import signing certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.DIST_CERT_PASSWORD }}
+
+      - name: Install provisioning profiles
+        run: |
+          DIR=~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p "$DIR"
+          echo "${{ secrets.APP_PROVISION_PROFILE_BASE64 }}" | base64 --decode > "$DIR/app.mobileprovision"
+          echo "${{ secrets.EXT_PROVISION_PROFILE_BASE64 }}" | base64 --decode > "$DIR/ext.mobileprovision"
+
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath build/Rhizome.xcarchive \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            | xcpretty || xcodebuild archive \
+            -project "$PROJECT" -scheme "$SCHEME" \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath build/Rhizome.xcarchive \
+            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}"
+
+      - name: Write export options
+        run: |
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key><dict>
+              <key>${APP_BUNDLE_ID}</key><string>${{ secrets.APP_PROFILE_NAME }}</string>
+              <key>${EXT_BUNDLE_ID}</key><string>${{ secrets.EXT_PROFILE_NAME }}</string>
+            </dict>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/Rhizome.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist ExportOptions.plist
+
+      - name: Upload to TestFlight
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.ASC_KEY_P8_BASE64 }}" | base64 --decode \
+            > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+          xcrun altool --upload-app -t ios \
+            -f "$(ls build/export/*.ipa | head -1)" \
+            --apiKey "${{ secrets.ASC_KEY_ID }}" \
+            --apiIssuer "${{ secrets.ASC_ISSUER_ID }}"
