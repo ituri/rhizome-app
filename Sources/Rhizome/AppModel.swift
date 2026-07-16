@@ -152,7 +152,6 @@ final class AppModel {
     var linkSuggestions: [LinkSuggestion] = []   // active [[ / (( autocomplete matches
     var linkSuggestKind: LinkKind?
     var locating = false                          // geo button is fetching a fix
-    @ObservationIgnored private let locationFetcher = LocationFetcher()
     private var flushTask: Task<Void, Never>?
 
     // The UITextView editor registers a callback so the keyboard bar's suggestion chips can
@@ -210,6 +209,39 @@ final class AppModel {
         editingID = new
         editText = ""
         clearLinkSuggestions()
+    }
+
+    /// Backspace at the very start of an EMPTY leaf bullet → delete it and move editing to the
+    /// bullet visually above (previous sibling's last descendant, else the parent). Returns the
+    /// id now being edited, or nil if it shouldn't be handled (non-empty, has children, or it's
+    /// the first bullet of a page/day with nothing above).
+    @discardableResult
+    func backspaceDelete(_ id: String) -> String? {
+        guard let node = doc?.nodes[id], (node.text ?? "").isEmpty, (node.children ?? []).isEmpty else { return nil }
+        guard let parent = parentMap[id], let sibs = doc?.nodes[parent]?.children,
+              let idx = sibs.firstIndex(of: id) else { return nil }
+        let target: String
+        if idx > 0 {
+            target = lastDescendant(of: sibs[idx - 1])
+        } else if parent != doc?.root, doc?.nodes[parent]?.cal != "day" {
+            target = parent                        // first child → fold up into the parent
+        } else {
+            return nil                             // first bullet of a page/day → nothing above
+        }
+        delete(id)
+        editingID = target
+        editText = doc?.nodes[target]?.text ?? ""
+        clearLinkSuggestions()
+        return target
+    }
+
+    /// The deepest last (visible) descendant of `id` — the node right above its next sibling.
+    private func lastDescendant(of id: String) -> String {
+        var cur = id
+        while !(doc?.nodes[cur]?.collapsed ?? false), let last = doc?.nodes[cur]?.children?.last {
+            cur = last
+        }
+        return cur
     }
 
     /// Dismiss the keyboard from the Done button. Resigning the text view triggers
@@ -358,7 +390,7 @@ final class AppModel {
         locating = true
         defer { locating = false }
         do {
-            let coord = try await locationFetcher.current()
+            let coord = try await Location.current()
             let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
             let pageID = findOrCreatePage(title: title)
             guard !pageID.isEmpty else { return }

@@ -2,52 +2,33 @@ import CoreLocation
 
 enum LocationError: Error { case unavailable }
 
-/// One-shot "where am I right now" as async/await, bridging CLLocationManager's delegate.
-/// Requests When-In-Use permission on first use (see Info.plist). Returns just the coordinate
-/// (a Sendable value) so nothing non-Sendable crosses the actor hop.
-@MainActor
-final class LocationFetcher: NSObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    private var cont: CheckedContinuation<CLLocationCoordinate2D, Error>?
+/// Current coordinate via the modern async location stream (iOS 17+). Prompts for When-In-Use
+/// permission if needed (see Info.plist), yields the first fix, and — crucially — times out, so
+/// the geo button never sticks in its spinning state when no fix arrives.
+enum Location {
+    private struct Coord: Sendable { let latitude: Double; let longitude: Double }
 
-    func current() async throws -> CLLocationCoordinate2D {
-        try await withCheckedThrowingContinuation { c in
-            self.cont = c
-            manager.delegate = self
-            switch manager.authorizationStatus {
-            case .notDetermined: manager.requestWhenInUseAuthorization()  // → authorization change requests the fix
-            case .denied, .restricted: finish(.failure(LocationError.unavailable))
-            default: manager.requestLocation()
+    static func current() async throws -> CLLocationCoordinate2D {
+        let c = try await withThrowingTaskGroup(of: Coord.self) { group -> Coord in
+            group.addTask { try await firstFix() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 15_000_000_000)   // 15s safety net
+                throw LocationError.unavailable
             }
+            defer { group.cancelAll() }
+            guard let coord = try await group.next() else { throw LocationError.unavailable }
+            return coord
         }
+        return CLLocationCoordinate2D(latitude: c.latitude, longitude: c.longitude)
     }
 
-    private func finish(_ result: Result<CLLocationCoordinate2D, Error>) {
-        guard let c = cont else { return }
-        cont = nil
-        c.resume(with: result)
-    }
-
-    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        Task { @MainActor in
-            switch self.manager.authorizationStatus {
-            case .authorizedWhenInUse, .authorizedAlways: self.manager.requestLocation()
-            case .denied, .restricted: self.finish(.failure(LocationError.unavailable))
-            default: break   // still undetermined → wait for the prompt result
+    private static func firstFix() async throws -> Coord {
+        for try await update in CLLocationUpdate.liveUpdates() {
+            if let loc = update.location {
+                return Coord(latitude: loc.coordinate.latitude, longitude: loc.coordinate.longitude)
             }
+            if update.authorizationDenied { throw LocationError.unavailable }
         }
-    }
-
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        let lat = locations.last?.coordinate.latitude   // capture plain Doubles across the hop
-        let lon = locations.last?.coordinate.longitude
-        Task { @MainActor in
-            if let lat, let lon { self.finish(.success(CLLocationCoordinate2D(latitude: lat, longitude: lon))) }
-            else { self.finish(.failure(LocationError.unavailable)) }
-        }
-    }
-
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        Task { @MainActor in self.finish(.failure(LocationError.unavailable)) }
+        throw LocationError.unavailable
     }
 }

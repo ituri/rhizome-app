@@ -217,6 +217,7 @@ struct RichTextEditor: UIViewRepresentable {
         tv.autocapitalizationType = .sentences
         tv.spellCheckingType = .no
         tv.attributedText = RichEditor.render(model.editText, doc: model.doc)
+        tv.selectedRange = NSRange(location: tv.attributedText.length, length: 0)   // caret at end on focus
         tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
         tv.setContentCompressionResistancePriority(.required, for: .vertical)
         tv.setContentHuggingPriority(.required, for: .vertical)
@@ -307,7 +308,11 @@ struct RichTextEditor: UIViewRepresentable {
 
         func textView(_ tv: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
             if text == "\n" || text == "\r" { model.returnFromEditor(); return false } // Return → finish this bullet, start the next
-            if text.isEmpty { // deletion: remove a touched token whole rather than one char of it
+            if text.isEmpty { // deletion
+                // backspace at the very start of an empty bullet → delete it and move up
+                if range.location == 0, range.length == 0, tv.attributedText.length == 0,
+                   model.backspaceDelete(id) != nil { return false }
+                // otherwise: remove a touched token whole rather than one char of it
                 var del = range
                 if range.length == 0, range.location > 0 { del = NSRange(location: range.location - 1, length: 1) }
                 if let tok = tokenRange(intersecting: del, in: tv.attributedText) {
