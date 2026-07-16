@@ -623,7 +623,15 @@ final class AppModel {
             let arr = JSONValue.array(files.map { f in
                 .object(["url": .string(f.url), "name": .string(f.name ?? ""), "type": .string(f.type ?? "")])
             })
-            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["files": arr])])
+            var patch: [String: JSONValue] = ["files": arr]
+            // give an otherwise-empty image bullet a text label (the file name) so it isn't a blank
+            // node you can accidentally delete, and so there's something to place the cursor on
+            if RichText.plain(doc?.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces).isEmpty {
+                let label = file.name ?? "image"
+                doc?.nodes[id]?.text = label
+                patch["text"] = .string(label)
+            }
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: patch)])
         } catch {
             errorMessage = String(describing: error)
         }

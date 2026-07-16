@@ -127,9 +127,9 @@ struct OutlineRow: View {
                         textDisplay(raw, lineH)
                     }
                     attachments
-                    if hasFiles && !hasText {
+                    if hasFiles {
                         // tapping below an image starts a fresh line beneath it (a new sibling), so
-                        // you can keep writing under the picture
+                        // you can keep writing under the picture without touching the image bullet
                         Color.clear
                             .frame(maxWidth: .infinity, minHeight: lineH)
                             .contentShape(Rectangle())
@@ -200,7 +200,11 @@ struct KeyboardAccessory: View {
 
     private func attach(_ image: UIImage, to id: String?) {
         guard let id, let data = image.jpegData(compressionQuality: 0.85) else { return }
-        Task { await model.attachFile(data, name: "photo-\(Int(Date().timeIntervalSince1970)).jpg", contentType: "image/jpeg", to: id) }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        let name = "Photo \(f.string(from: Date())).jpg"
+        Task { await model.attachFile(data, name: name, contentType: "image/jpeg", to: id) }
     }
 
     private var bar: some View {
