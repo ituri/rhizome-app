@@ -36,6 +36,15 @@ enum RichEditor {
     private static let tokenRE = try? NSRegularExpression(
         pattern: #"(\(\([A-Za-z0-9_-]+\)\))|(#\[\[[^\]]+\]\])|(#[\p{L}0-9_\-]+)|(\[\[[^\]]+\]\])"#
     )
+    // #tag / #[[multi word]] — for live re-colouring of typed text.
+    private static let tagRE = try? NSRegularExpression(pattern: #"#\[\[[^\]]+\]\]|#[\p{L}0-9_\-]+"#)
+
+    /// Ranges of `#tag` / `#[[multi]]` within a plain string (for the editor's live restyle).
+    static func tagRanges(in text: String) -> [NSRange] {
+        guard let re = tagRE else { return [] }
+        let ns = text as NSString
+        return re.matches(in: text, range: NSRange(location: 0, length: ns.length)).map(\.range)
+    }
 
     // MARK: - source HTML → attributed
 
@@ -263,6 +272,30 @@ struct RichTextEditor: UIViewRepresentable {
             model.onEditorText(source)
             tv.invalidateIntrinsicContentSize()
             updateSuggestions(tv)
+            restyleTags(tv)
+        }
+
+        /// Re-colour typed `#tags` live (accent), in place, without touching link/ref tokens or
+        /// the caret — the desktop's "re-decorate as you type", for tags.
+        private func restyleTags(_ tv: UITextView) {
+            guard tv.markedTextRange == nil else { return }   // don't disturb IME composition
+            let storage = tv.textStorage
+            let whole = storage.string as NSString
+            var plain: [NSRange] = []
+            storage.enumerateAttribute(.rzSource, in: NSRange(location: 0, length: storage.length)) { src, range, _ in
+                if src == nil { plain.append(range) }   // collect first, mutate after
+            }
+            let sel = tv.selectedRange
+            storage.beginEditing()
+            for range in plain {
+                storage.addAttribute(.foregroundColor, value: RichEditor.ink, range: range)
+                for m in RichEditor.tagRanges(in: whole.substring(with: range)) {
+                    storage.addAttribute(.foregroundColor, value: RichEditor.accent,
+                                         range: NSRange(location: range.location + m.location, length: m.length))
+                }
+            }
+            storage.endEditing()
+            tv.selectedRange = sel
         }
 
         func textView(_ tv: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
