@@ -25,8 +25,33 @@ public struct RFile: Codable, Sendable {
     public var url: String
     public var name: String?
     public var type: String?
-    public init(url: String, name: String? = nil, type: String? = nil) {
-        self.url = url; self.name = name; self.type = type
+    public var size: Double?
+    public init(url: String, name: String? = nil, type: String? = nil, size: Double? = nil) {
+        self.url = url; self.name = name; self.type = type; self.size = size
+    }
+}
+
+/// A note that references an asset (backlink).
+public struct RAssetRef: Codable, Sendable, Identifiable {
+    public var node: String
+    public var page: String?
+    public var pageTitle: String?
+    public var id: String { node }
+}
+
+/// One uploaded file in the asset manager: metadata + which notes use it.
+public struct RAsset: Codable, Sendable, Identifiable {
+    public var url: String
+    public var name: String?
+    public var type: String?
+    public var size: Double?
+    public var mtime: Double?
+    public var refs: [RAssetRef]?
+    public var missing: Bool?
+    public var id: String { url }
+    public var isImage: Bool {
+        if let t = type, t.hasPrefix("image/") { return true }
+        return (name ?? url).range(of: #"\.(png|jpe?g|gif|webp|svg|bmp|heic|heif)$"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 }
 
@@ -121,9 +146,33 @@ public struct RhizomeAPI: Sendable {
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         let out = try await send(request)
-        struct Resp: Decodable { let url: String; let name: String? }
+        struct Resp: Decodable { let url: String; let name: String?; let size: Double? }
         let r = try JSONDecoder().decode(Resp.self, from: out)
-        return RFile(url: r.url, name: r.name, type: contentType)
+        return RFile(url: r.url, name: r.name, type: contentType, size: r.size)
+    }
+
+    // MARK: assets
+
+    public func assets(graphID: String) async throws -> [RAsset] {
+        let data = try await get("api/g/\(graphID)/assets")
+        struct R: Decodable { let assets: [RAsset] }
+        return (try? JSONDecoder().decode(R.self, from: data).assets) ?? []
+    }
+
+    public func deleteAsset(graphID: String, url: String) async throws {
+        struct Body: Encodable { let url: String }
+        _ = try await post("api/g/\(graphID)/assets/delete", body: Body(url: url))
+    }
+
+    public func orphans(graphID: String) async throws -> [RAsset] {
+        let data = try await get("api/g/\(graphID)/assets/orphans")
+        struct R: Decodable { let orphans: [RAsset] }
+        return (try? JSONDecoder().decode(R.self, from: data).orphans) ?? []
+    }
+
+    public func deleteOrphans(graphID: String, names: [String]) async throws {
+        struct Body: Encodable { let names: [String] }
+        _ = try await post("api/g/\(graphID)/assets/orphans/delete", body: Body(names: names))
     }
 
     /// Full-text search → matching node ids (server-side FTS).

@@ -597,6 +597,15 @@ final class AppModel {
         return URL(string: path, relativeTo: base)?.absoluteURL
     }
 
+    /// Encode a node's `files` list as an op patch value (carrying size when known).
+    private func filesJSON(_ files: [RFile]) -> JSONValue {
+        .array(files.map { f in
+            var o: [String: JSONValue] = ["url": .string(f.url), "name": .string(f.name ?? ""), "type": .string(f.type ?? "")]
+            if let s = f.size { o["size"] = .double(s) }
+            return .object(o)
+        })
+    }
+
     /// Remove one attachment from a node, syncing the shortened (or cleared) `files` list.
     func removeFile(_ url: String, from id: String) {
         guard var files = doc?.nodes[id]?.files else { return }
@@ -605,10 +614,7 @@ final class AppModel {
         if files.isEmpty {
             send([Op(kind: "update", node: id, hlc: clock.stamp(), unset: ["files"])])
         } else {
-            let arr = JSONValue.array(files.map { f in
-                .object(["url": .string(f.url), "name": .string(f.name ?? ""), "type": .string(f.type ?? "")])
-            })
-            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["files": arr])])
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["files": filesJSON(files)])])
         }
     }
 
@@ -625,10 +631,7 @@ final class AppModel {
             var files = doc?.nodes[id]?.files ?? []
             files.append(file)
             doc?.nodes[id]?.files = files
-            let arr = JSONValue.array(files.map { f in
-                .object(["url": .string(f.url), "name": .string(f.name ?? ""), "type": .string(f.type ?? "")])
-            })
-            var patch: [String: JSONValue] = ["files": arr]
+            var patch: [String: JSONValue] = ["files": filesJSON(files)]
             // give an otherwise-empty image bullet a text label (the file name) so it isn't a blank
             // node you can accidentally delete, and so there's something to place the cursor on
             if RichText.plain(doc?.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces).isEmpty {
@@ -643,6 +646,32 @@ final class AppModel {
         } catch {
             errorMessage = String(describing: error)
         }
+    }
+
+    // MARK: - Asset manager
+
+    var assets: [RAsset] = []
+    var orphans: [RAsset] = []
+
+    func loadAssets() async {
+        guard let api, let graphID = activeGraph?.id else { return }
+        do { assets = try await api.assets(graphID: graphID) } catch { errorMessage = String(describing: error) }
+        do { orphans = try await api.orphans(graphID: graphID) } catch { orphans = [] }   // owner-only → may 403
+    }
+
+    func deleteAsset(_ url: String) async {
+        guard let api, let graphID = activeGraph?.id else { return }
+        do {
+            try await api.deleteAsset(graphID: graphID, url: url)
+            await loadDoc()        // server stripped the refs + broadcast; refresh our doc
+            await loadAssets()
+        } catch { errorMessage = String(describing: error) }
+    }
+
+    func deleteOrphans(_ names: [String]) async {
+        guard let api, let graphID = activeGraph?.id else { return }
+        do { try await api.deleteOrphans(graphID: graphID, names: names); await loadAssets() }
+        catch { errorMessage = String(describing: error) }
     }
 
     /// Insert a new empty sibling after `id`; returns its id (to focus it).
