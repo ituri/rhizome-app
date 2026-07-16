@@ -113,7 +113,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Behaviour")
                 } footer: {
-                    Text("New notes added with + are prefixed with the time, like the r command.")
+                    Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices.")
                 }
 
                 // ---- Uploads ----

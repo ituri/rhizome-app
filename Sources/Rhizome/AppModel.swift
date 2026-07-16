@@ -44,9 +44,29 @@ final class AppModel {
     var busy = false
     var isOffline = false
 
-    /// Prepend an `HH:mm` timestamp to captured notes, like the `r` command.
+    /// Prepend an `HH:mm` timestamp to captured notes, like the `r` command. Shared across
+    /// devices for the account: applying a value pulled from the server doesn't push it back.
+    private var applyingRemotePrefs = false
     var captureTimestamp: Bool {
-        didSet { UserDefaults.standard.set(captureTimestamp, forKey: "captureTimestamp") }
+        didSet {
+            UserDefaults.standard.set(captureTimestamp, forKey: "captureTimestamp")
+            if !applyingRemotePrefs { pushPrefs() }
+        }
+    }
+
+    /// Apply cross-device preferences fetched from the server (server value wins on load).
+    private func applyPrefs(_ me: RMe) {
+        guard let p = me.prefs else { return }
+        applyingRemotePrefs = true
+        defer { applyingRemotePrefs = false }
+        if let ts = p.captureTimestamp { captureTimestamp = ts }
+    }
+
+    /// Mirror the shared preferences up to the server (best-effort).
+    private func pushPrefs() {
+        guard let api, !isOffline else { return }
+        let prefs = RPrefs(captureTimestamp: captureTimestamp)
+        Task { try? await api.putPrefs(prefs) }
     }
 
     /// Human-readable name sent with edits, shown in the web app's page history.
@@ -168,6 +188,7 @@ final class AppModel {
             LocalStore.save(me, "me.json")
             isOffline = false
             if let u = me.user {
+                applyPrefs(me)
                 await adopt(user: u, graphs: me.graphs ?? [], api: api)
             } else {
                 phase = .signedOut
@@ -190,6 +211,7 @@ final class AppModel {
         do {
             let user = try await api.login(username: username, password: password)
             let me = try await api.me()
+            applyPrefs(me)
             await adopt(user: user, graphs: me.graphs ?? [], api: api)
         } catch {
             errorMessage = String(describing: error)

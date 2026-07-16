@@ -14,9 +14,16 @@ public struct RGraph: Codable, Sendable, Identifiable {
     public let role: String?
 }
 
+/// Cross-device preferences for the signed-in account (shared web ⇄ iOS).
+public struct RPrefs: Codable, Sendable {
+    public var captureTimestamp: Bool?
+    public init(captureTimestamp: Bool? = nil) { self.captureTimestamp = captureTimestamp }
+}
+
 public struct RMe: Codable, Sendable {
     public let user: RUser?
     public let graphs: [RGraph]?
+    public let prefs: RPrefs?
     public let authRequired: Bool?
 }
 
@@ -159,6 +166,16 @@ public struct RhizomeAPI: Sendable {
     public func me() async throws -> RMe {
         let data = try await get("api/me")
         return try JSONDecoder().decode(RMe.self, from: data)
+    }
+
+    /// Save cross-device preferences (merged server-side with any existing prefs).
+    public func putPrefs(_ prefs: RPrefs) async throws {
+        struct Body: Encodable { let prefs: RPrefs }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/account/prefs"))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(Body(prefs: prefs))
+        _ = try await send(request)
     }
 
     public func doc(graphID: String) async throws -> RDocResponse {
