@@ -31,7 +31,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
-            switch manager.authorizationStatus {
+            switch self.manager.authorizationStatus {   // use self.manager (Sendable) — not the param
             case .authorizedWhenInUse, .authorizedAlways: self.manager.startUpdatingLocation()
             default: break
             }
