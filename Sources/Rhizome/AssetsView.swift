@@ -306,3 +306,91 @@ struct NotePickerSheet: View {
         return true
     }
 }
+
+/// A fuzzy-searchable picker of already-uploaded files (In use + Unused) to attach to a bullet.
+struct AssetPickerSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let onPick: (RAsset) -> Void
+    @State private var query = ""
+
+    /// Every uploaded file (referenced + unused), de-duplicated by url.
+    private var all: [RAsset] {
+        var seen = Set<String>(); var out: [RAsset] = []
+        for a in model.assets + model.orphans where !seen.contains(a.url) { seen.insert(a.url); out.append(a) }
+        return out
+    }
+    private var filtered: [RAsset] {
+        guard !query.isEmpty else { return all }
+        return all.filter { fuzzy(query, $0.name ?? $0.url) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if all.isEmpty {
+                    ContentUnavailableView("No uploaded files", systemImage: "photo.on.rectangle",
+                                           description: Text("Files you upload appear here to reuse."))
+                } else {
+                    List(filtered) { a in
+                        Button { onPick(a); dismiss() } label: { AssetPickRow(asset: a) }
+                            .listRowBackground(Color.rzPaper)
+                    }
+                    .listStyle(.plain)
+                    .paperBackground()
+                    .overlay { if filtered.isEmpty { ContentUnavailableView.search(text: query) } }
+                }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search files")
+            .navigationTitle("Insert file")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .task { await model.loadAssets() }
+        }
+    }
+
+    private func fuzzy(_ q: String, _ s: String) -> Bool {
+        let qq = q.lowercased()
+        var it = s.lowercased().makeIterator()
+        for ch in qq {
+            var found = false
+            while !found, let c = it.next() { if c == ch { found = true } }
+            if !found { return false }
+        }
+        return true
+    }
+}
+
+/// A row in the asset picker: thumbnail + name + size.
+struct AssetPickRow: View {
+    @Environment(AppModel.self) private var model
+    let asset: RAsset
+    @State private var image: UIImage?
+
+    private var cleanName: String {
+        (asset.name ?? asset.url).replacingOccurrences(of: #"^[a-z0-9]{6,}-"#, with: "", options: .regularExpression)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Group {
+                if let image { Image(uiImage: image).resizable().scaledToFill() }
+                else if asset.isImage { Color.rzLineSoft.overlay { ProgressView() } }
+                else { Color.rzLineSoft.overlay { Image(systemName: "paperclip").foregroundStyle(Color.rzInkFaint) } }
+            }
+            .frame(width: 44, height: 44)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(cleanName).font(.rz(15)).foregroundStyle(Color.rzInk).lineLimit(1)
+                if let s = asset.size {
+                    Text(ByteCountFormatter.string(fromByteCount: Int64(s), countStyle: .file))
+                        .font(.rz(12)).foregroundStyle(Color.rzInkFaint)
+                }
+            }
+            Spacer()
+        }
+        .task(id: asset.url) {
+            if asset.isImage, let url = model.fileURL(asset.url) { image = await ImageCache.load(url) }
+        }
+    }
+}

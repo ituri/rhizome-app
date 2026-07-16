@@ -157,6 +157,7 @@ struct KeyboardAccessory: View {
     @State private var showCamera = false
     @State private var showLibrary = false
     @State private var pickerItem: PhotosPickerItem?
+    @State private var showAssetPicker = false
     @State private var attachTarget: String?   // node to attach to, captured before the picker steals focus
 
     // The picker/dialog modifiers live here (always in the tree), NOT on `bar` — presenting a
@@ -169,7 +170,11 @@ struct KeyboardAccessory: View {
         .confirmationDialog("Add image", isPresented: $showSourceDialog, titleVisibility: .visible) {
             Button("Take Photo") { showCamera = true }
             Button("Choose from Library") { showLibrary = true }
+            Button("From uploaded files") { showAssetPicker = true }
             Button("Cancel", role: .cancel) {}
+        }
+        .sheet(isPresented: $showAssetPicker) {
+            AssetPickerSheet { asset in if let id = attachTarget { model.attachAsset(asset, to: id) } }
         }
         .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
         .onChange(of: pickerItem) { _, item in

@@ -628,24 +628,37 @@ final class AppModel {
         defer { uploadingNodes.remove(id) }
         do {
             let file = try await api.upload(data, name: name, contentType: contentType)
-            var files = doc?.nodes[id]?.files ?? []
-            files.append(file)
-            doc?.nodes[id]?.files = files
-            var patch: [String: JSONValue] = ["files": filesJSON(files)]
-            // give an otherwise-empty image bullet a text label (the file name) so it isn't a blank
-            // node you can accidentally delete, and so there's something to place the cursor on
-            if RichText.plain(doc?.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces).isEmpty {
-                let label = file.name ?? "image"
-                doc?.nodes[id]?.text = label
-                patch["text"] = .string(label)
-                // if this bullet is open in the editor, keep the buffer in sync so its blur/flush
-                // doesn't wipe the label straight back out, and reload the field to show it
-                if editingID == id { editText = label; editorReload?() }
-            }
-            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: patch)])
+            applyFile(file, to: id)
         } catch {
             errorMessage = String(describing: error)
         }
+    }
+
+    /// Attach an already-uploaded file (from the asset manager) to the current bullet.
+    func attachAsset(_ asset: RAsset, to id: String) {
+        // strip a stored `<uid>-` prefix so a re-used file gets a clean label
+        let clean = (asset.name ?? "image").replacingOccurrences(of: #"^[a-z0-9]{6,}-"#, with: "", options: .regularExpression)
+        applyFile(RFile(url: asset.url, name: clean, type: asset.type, size: asset.size), to: id)
+    }
+
+    /// Append a file to a bullet's `files`, label an empty bullet with its name, and sync.
+    private func applyFile(_ file: RFile, to id: String) {
+        guard doc?.nodes[id] != nil else { return }
+        var files = doc?.nodes[id]?.files ?? []
+        files.append(file)
+        doc?.nodes[id]?.files = files
+        var patch: [String: JSONValue] = ["files": filesJSON(files)]
+        // give an otherwise-empty image bullet a text label (the file name) so it isn't a blank
+        // node you can accidentally delete, and so there's something to place the cursor on
+        if RichText.plain(doc?.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces).isEmpty {
+            let label = file.name ?? "image"
+            doc?.nodes[id]?.text = label
+            patch["text"] = .string(label)
+            // if this bullet is open in the editor, keep the buffer in sync so its blur/flush
+            // doesn't wipe the label straight back out, and reload the field to show it
+            if editingID == id { editText = label; editorReload?() }
+        }
+        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: patch)])
     }
 
     // MARK: - Asset manager
