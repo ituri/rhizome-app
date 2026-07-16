@@ -685,6 +685,14 @@ final class AppModel {
         } catch { errorMessage = String(describing: error) }
     }
 
+    /// Rename an unused file on disk.
+    func renameOrphan(_ name: String, to newName: String) async {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let api, let graphID = activeGraph?.id, !trimmed.isEmpty else { return }
+        do { try await api.renameOrphan(graphID: graphID, name: name, newName: trimmed); await loadAssets() }
+        catch { errorMessage = String(describing: error) }
+    }
+
     /// Insert an existing (e.g. unused) file into a note as a new image bullet at its end.
     func insertImage(_ asset: RAsset, into parentID: String) async {
         guard doc?.nodes[parentID] != nil, let newID = insertChild(of: parentID) else { return }

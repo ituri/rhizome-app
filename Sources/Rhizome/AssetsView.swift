@@ -9,8 +9,28 @@ struct AssetsView: View {
     @State private var path: [String] = []
     @State private var confirmDeleteAll = false
     @State private var pickTarget: RAsset?   // unused image awaiting a note to insert into
-    @State private var renameTarget: RAsset? // in-use file being renamed
+    @State private var renameTarget: RAsset? // file being renamed
     @State private var renameText = ""
+    @State private var renameIsOrphan = false
+    @State private var query = ""
+
+    private func fuzzy(_ q: String, _ s: String) -> Bool {
+        let qq = q.lowercased(); if qq.isEmpty { return true }
+        var it = s.lowercased().makeIterator()
+        for ch in qq {
+            var found = false
+            while !found, let c = it.next() { if c == ch { found = true } }
+            if !found { return false }
+        }
+        return true
+    }
+    private func matches(_ a: RAsset) -> Bool {
+        if query.isEmpty { return true }
+        if fuzzy(query, a.name ?? a.url) { return true }
+        return (a.refs ?? []).contains { fuzzy(query, $0.pageTitle ?? "") }
+    }
+    private var filteredAssets: [RAsset] { model.assets.filter(matches) }
+    private var filteredOrphans: [RAsset] { model.orphans.filter(matches) }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -32,6 +52,7 @@ struct AssetsView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
             }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search files")
             .task { await model.loadAssets() }
             .refreshable { await model.loadAssets() }
             .sheet(item: $pickTarget) { NotePickerSheet(asset: $0) }
@@ -39,8 +60,11 @@ struct AssetsView: View {
                    presenting: renameTarget) { a in
                 TextField("Name", text: $renameText)
                 Button("Save") {
-                    let url = a.url, name = renameText
-                    Task { await model.renameAsset(url, to: name) }
+                    let name = renameText, isOrphan = renameIsOrphan, url = a.url, stored = a.name ?? ""
+                    Task {
+                        if isOrphan { await model.renameOrphan(stored, to: name) }
+                        else { await model.renameAsset(url, to: name) }
+                    }
                     renameTarget = nil
                 }
                 Button("Cancel", role: .cancel) { renameTarget = nil }
@@ -52,9 +76,11 @@ struct AssetsView: View {
         if model.assets.isEmpty {
             ContentUnavailableView("No files yet", systemImage: "photo.on.rectangle",
                                    description: Text("Images and files you attach to notes show up here."))
+        } else if filteredAssets.isEmpty {
+            ContentUnavailableView.search(text: query)
         } else {
             List {
-                ForEach(model.assets) { a in
+                ForEach(filteredAssets) { a in
                     AssetRow(asset: a)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) { Task { await model.deleteAsset(a.url) } } label: {
@@ -62,7 +88,7 @@ struct AssetsView: View {
                             }
                         }
                         .swipeActions(edge: .leading) {
-                            Button { renameText = a.name ?? ""; renameTarget = a } label: {
+                            Button { renameText = a.name ?? ""; renameIsOrphan = false; renameTarget = a } label: {
                                 Label("Rename", systemImage: "pencil")
                             }
                             .tint(.blue)
@@ -78,15 +104,25 @@ struct AssetsView: View {
         if model.orphans.isEmpty {
             ContentUnavailableView("No unused files", systemImage: "checkmark.circle",
                                    description: Text("Every uploaded file is referenced by a note."))
+        } else if filteredOrphans.isEmpty {
+            ContentUnavailableView.search(text: query)
         } else {
             List {
                 Section {
-                    ForEach(model.orphans) { o in
+                    ForEach(filteredOrphans) { o in
                         AssetRow(asset: o, pickAction: { pickTarget = o })
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     if let n = o.name { Task { await model.deleteOrphans([n]) } }
                                 } label: { Label("Delete", systemImage: "trash") }
+                            }
+                            .swipeActions(edge: .leading) {
+                                Button {
+                                    // suggest the name without the stored uid prefix
+                                    renameText = (o.name ?? "").replacingOccurrences(of: #"^[a-z0-9]{6,}-"#, with: "", options: .regularExpression)
+                                    renameIsOrphan = true; renameTarget = o
+                                } label: { Label("Rename", systemImage: "pencil") }
+                                .tint(.blue)
                             }
                     }
                 } footer: {
@@ -94,7 +130,7 @@ struct AssetsView: View {
                 }
                 Section {
                     Button(role: .destructive) { confirmDeleteAll = true } label: {
-                        Text("Delete all \(model.orphans.count) unused files")
+                        Text("Delete all \(filteredOrphans.count) unused files")
                     }
                     .listRowBackground(Color.rzPaper)
                 }
@@ -103,8 +139,8 @@ struct AssetsView: View {
             .paperBackground()
             .confirmationDialog("Delete all unused files? This can't be undone.",
                                 isPresented: $confirmDeleteAll, titleVisibility: .visible) {
-                Button("Delete \(model.orphans.count) files", role: .destructive) {
-                    Task { await model.deleteOrphans(model.orphans.compactMap(\.name)) }
+                Button("Delete \(filteredOrphans.count) files", role: .destructive) {
+                    Task { await model.deleteOrphans(filteredOrphans.compactMap(\.name)) }
                 }
                 Button("Cancel", role: .cancel) {}
             }

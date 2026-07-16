@@ -180,6 +180,11 @@ public struct RhizomeAPI: Sendable {
         _ = try await post("api/g/\(graphID)/assets/orphans/delete", body: Body(names: names))
     }
 
+    public func renameOrphan(graphID: String, name: String, newName: String) async throws {
+        struct Body: Encodable { let name: String; let newName: String }
+        _ = try await post("api/g/\(graphID)/assets/orphans/rename", body: Body(name: name, newName: newName))
+    }
+
     /// Full-text search → matching node ids (server-side FTS).
     public func search(graphID: String, query: String) async throws -> [String] {
         // Build the query with URLComponents — appendingPathComponent would percent-
