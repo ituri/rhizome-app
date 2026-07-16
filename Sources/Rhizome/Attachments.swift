@@ -24,7 +24,8 @@ struct ViewerImage: Identifiable {
 struct AttachmentImageView: View {
     let url: URL
     let onDelete: () -> Void
-    let onTap: () -> Void
+    let onTap: () -> Void          // select/edit the bullet (reveals its file-name text)
+    let onLongPress: () -> Void    // open full-screen
     @State private var image: UIImage?
 
     var body: some View {
@@ -41,6 +42,7 @@ struct AttachmentImageView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onTap)
+                    .onLongPressGesture(perform: onLongPress)
                     .overlay(alignment: .topTrailing) {
                         Button(action: onDelete) {
                             Image(systemName: "xmark.circle.fill")

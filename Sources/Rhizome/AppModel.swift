@@ -630,6 +630,9 @@ final class AppModel {
                 let label = file.name ?? "image"
                 doc?.nodes[id]?.text = label
                 patch["text"] = .string(label)
+                // if this bullet is open in the editor, keep the buffer in sync so its blur/flush
+                // doesn't wipe the label straight back out, and reload the field to show it
+                if editingID == id { editText = label; editorReload?() }
             }
             send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: patch)])
         } catch {

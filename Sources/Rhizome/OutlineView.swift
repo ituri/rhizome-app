@@ -50,7 +50,8 @@ struct OutlineRow: View {
                     AttachmentImageView(
                         url: url,
                         onDelete: { model.removeFile(f.url, from: id) },
-                        onTap: { viewer = ViewerImage(url: url) }
+                        onTap: { model.beginEdit(id) },
+                        onLongPress: { viewer = ViewerImage(url: url) }
                     )
                 } else if let url = model.fileURL(f.url) {
                     Link(destination: url) {
@@ -112,31 +113,15 @@ struct OutlineRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 let raw = node?.text ?? ""
-                let hasText = !RichText.plain(raw, doc: model.doc).isEmpty
                 if model.editingID == id {
-                    // rich inline editor: links/refs/tags render as they do when displayed, long
-                    // lines wrap, Return makes a new bullet, and [[ / (( autocomplete at the caret
+                    // editing shows the text (the image's file name) INSTEAD of the picture, so you
+                    // can rename it, place the cursor, and press Return for a new line beneath it
                     RichTextEditor(model: model, id: id, source: model.editText)
                         .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
-                    attachments
+                } else if hasFiles {
+                    attachments   // tap → edit (reveals the file name); long-press → full screen
                 } else {
-                    // An image-only bullet drops the empty text line above the picture (no blank line);
-                    // its caption line moves below the image as a tap target, so you can place the
-                    // cursor there and start a new line.
-                    if hasText || !hasFiles {
-                        textDisplay(raw, lineH)
-                    }
-                    attachments
-                    if hasFiles {
-                        // tapping below an image starts a fresh line beneath it (a new sibling), so
-                        // you can keep writing under the picture without touching the image bullet
-                        Color.clear
-                            .frame(maxWidth: .infinity, minHeight: lineH)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if let new = model.insertSibling(after: id) { model.beginEdit(new) }
-                            }
-                    }
+                    textDisplay(raw, lineH)
                 }
             }
         }
