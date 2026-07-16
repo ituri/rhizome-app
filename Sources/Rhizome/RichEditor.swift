@@ -16,8 +16,17 @@ extension NSAttributedString.Key {
 /// are treated atomically; plain text is HTML-escaped and re-wrapped in `<b>/<i>/<s>/<code>`.
 @MainActor
 enum RichEditor {
-    static let fontSize: CGFloat = 16.5
+    // configurable from Settings (AppModel mirrors the persisted values into these)
+    static var fontSize: CGFloat = 16.5
+    static var lineSpacing: CGFloat = 3
     static let ink = UIColor(red: 0.1847, green: 0.14, blue: 0.1105, alpha: 1)
+
+    /// The paragraph style carrying the configured line spacing, applied across the whole editor.
+    static func paragraphStyle() -> NSParagraphStyle {
+        let p = NSMutableParagraphStyle()
+        p.lineSpacing = lineSpacing
+        return p
+    }
     static let accent = UIColor(
         red: CGFloat(Config.accent.red), green: CGFloat(Config.accent.green), blue: CGFloat(Config.accent.blue), alpha: 1
     )
@@ -83,6 +92,9 @@ enum RichEditor {
                 appendPlain(out, String(chars[i..<j]), fmt, doc)
                 i = j
             }
+        }
+        if out.length > 0 {
+            out.addAttribute(.paragraphStyle, value: paragraphStyle(), range: NSRange(location: 0, length: out.length))
         }
         return out
     }
@@ -213,12 +225,15 @@ struct RichTextEditor: UIViewRepresentable {
         tv.isScrollEnabled = false
         tv.textContainerInset = .zero
         tv.textContainer.lineFragmentPadding = 0
-        tv.autocorrectionType = .no
+        tv.autocorrectionType = .yes
         tv.autocapitalizationType = .sentences
-        tv.spellCheckingType = .no
+        tv.spellCheckingType = .yes
         tv.attributedText = RichEditor.render(model.editText, doc: model.doc)
         tv.selectedRange = NSRange(location: tv.attributedText.length, length: 0)   // caret at end on focus
-        tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
+        tv.typingAttributes = [
+            .font: RichEditor.font(), .foregroundColor: RichEditor.ink,
+            .paragraphStyle: RichEditor.paragraphStyle(),
+        ]
         tv.setContentCompressionResistancePriority(.required, for: .vertical)
         tv.setContentHuggingPriority(.required, for: .vertical)
         context.coordinator.textView = tv

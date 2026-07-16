@@ -57,6 +57,23 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Stepper(value: $model.fontSize, in: 12...28, step: 0.5) {
+                        LabeledContent("Font size", value: String(format: "%.1f pt", model.fontSize))
+                    }
+                    Stepper(value: $model.lineSpacing, in: 0...14, step: 1) {
+                        LabeledContent("Line spacing", value: String(format: "%.0f pt", model.lineSpacing))
+                    }
+                    Text("The quick brown fox jumps over the lazy dog.")
+                        .font(.rz(model.fontSize))
+                        .lineSpacing(model.lineSpacing)
+                        .foregroundStyle(Color.rzInk)
+                } header: {
+                    Text("Display")
+                } footer: {
+                    Text("Text size and spacing for outline bullets.")
+                }
+
+                Section {
                     TextField("Device name", text: $model.deviceName)
                         .autocorrectionDisabled()
                 } header: {

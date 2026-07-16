@@ -53,12 +53,26 @@ final class AppModel {
         didSet { UserDefaults.standard.set(deviceName, forKey: "deviceName") }
     }
 
+    /// Outline text size (pt). Mirrored into RichEditor so display + editor stay in sync.
+    var fontSize: Double {
+        didSet { UserDefaults.standard.set(fontSize, forKey: "fontSize"); RichEditor.fontSize = CGFloat(fontSize) }
+    }
+
+    /// Extra spacing between wrapped lines (pt).
+    var lineSpacing: Double {
+        didSet { UserDefaults.standard.set(lineSpacing, forKey: "lineSpacing"); RichEditor.lineSpacing = CGFloat(lineSpacing) }
+    }
+
     init() {
         let saved = UserDefaults.standard.string(forKey: "serverURL")
         serverURLString = saved ?? Config.serverURL.absoluteString
         activeGraphID = UserDefaults.standard.string(forKey: "activeGraphID")
         captureTimestamp = UserDefaults.standard.object(forKey: "captureTimestamp") as? Bool ?? true
         deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? UIDevice.current.name
+        fontSize = UserDefaults.standard.object(forKey: "fontSize") as? Double ?? 16.5
+        lineSpacing = UserDefaults.standard.object(forKey: "lineSpacing") as? Double ?? 3
+        RichEditor.fontSize = CGFloat(fontSize)
+        RichEditor.lineSpacing = CGFloat(lineSpacing)
     }
 
     var api: RhizomeAPI? {

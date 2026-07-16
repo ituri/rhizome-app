@@ -68,8 +68,8 @@ struct OutlineRow: View {
                         .contentShape(Rectangle())
                         .onTapGesture { model.beginEdit(id) }
                     Text(RichText.attributed(raw, doc: model.doc))
-                        .font(.rz(16.5))
-                        .lineSpacing(3)
+                        .font(.rz(model.fontSize))
+                        .lineSpacing(model.lineSpacing)
                         .strikethrough(isDone)
                         .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
                         .allowsHitTesting(hasLinks)
