@@ -674,6 +674,18 @@ final class AppModel {
         catch { errorMessage = String(describing: error) }
     }
 
+    /// Insert an existing (e.g. unused) file into a note as a new image bullet at its end.
+    func insertImage(_ asset: RAsset, into parentID: String) async {
+        guard doc?.nodes[parentID] != nil, let newID = insertChild(of: parentID) else { return }
+        let file = RFile(url: asset.url, name: asset.name, type: asset.type, size: asset.size)
+        doc?.nodes[newID]?.files = [file]
+        // label the new bullet with the file name (strip the stored `<uid>-` prefix) so it isn't empty
+        let label = (asset.name ?? "image").replacingOccurrences(of: #"^[a-z0-9]{6,}-"#, with: "", options: .regularExpression)
+        doc?.nodes[newID]?.text = label
+        send([Op(kind: "update", node: newID, hlc: clock.stamp(), patch: ["files": filesJSON([file]), "text": .string(label)])])
+        await loadAssets()   // the file is now referenced → moves from Unused to In use
+    }
+
     /// Insert a new empty sibling after `id`; returns its id (to focus it).
     @discardableResult
     func insertSibling(after id: String) -> String? {

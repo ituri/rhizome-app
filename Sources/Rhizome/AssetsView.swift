@@ -8,6 +8,7 @@ struct AssetsView: View {
     @State private var tab = 0               // 0 = in use, 1 = unused
     @State private var path: [String] = []
     @State private var confirmDeleteAll = false
+    @State private var pickTarget: RAsset?   // unused image awaiting a note to insert into
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -31,6 +32,7 @@ struct AssetsView: View {
             }
             .task { await model.loadAssets() }
             .refreshable { await model.loadAssets() }
+            .sheet(item: $pickTarget) { NotePickerSheet(asset: $0) }
         }
     }
 
@@ -60,13 +62,17 @@ struct AssetsView: View {
                                    description: Text("Every uploaded file is referenced by a note."))
         } else {
             List {
-                ForEach(model.orphans) { o in
-                    AssetRow(asset: o)
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                if let n = o.name { Task { await model.deleteOrphans([n]) } }
-                            } label: { Label("Delete", systemImage: "trash") }
-                        }
+                Section {
+                    ForEach(model.orphans) { o in
+                        AssetRow(asset: o, pickAction: { pickTarget = o })
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    if let n = o.name { Task { await model.deleteOrphans([n]) } }
+                                } label: { Label("Delete", systemImage: "trash") }
+                            }
+                    }
+                } footer: {
+                    Text("Tap an image to insert it into a note.")
                 }
                 Section {
                     Button(role: .destructive) { confirmDeleteAll = true } label: {
@@ -92,6 +98,7 @@ struct AssetsView: View {
 struct AssetRow: View {
     @Environment(AppModel.self) private var model
     let asset: RAsset
+    var pickAction: (() -> Void)? = nil   // set for unused rows: tapping the image picks a note
     @State private var viewer: ViewerImage?
 
     var body: some View {
@@ -131,7 +138,9 @@ struct AssetRow: View {
 
     @ViewBuilder private var thumb: some View {
         if asset.isImage, let url = model.fileURL(asset.url) {
-            AssetThumb(url: url) { viewer = ViewerImage(url: url) }
+            AssetThumb(url: url) {
+                if let pickAction { pickAction() } else { viewer = ViewerImage(url: url) }
+            }
         } else {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.rzLineSoft)
@@ -171,5 +180,75 @@ struct AssetThumb: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .task(id: url) { image = await ImageCache.load(url) }
+    }
+}
+
+/// A fuzzy-searchable list of notes (top-level pages + journal days); picking one inserts the
+/// asset into it as a new image bullet.
+struct NotePickerSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let asset: RAsset
+    @State private var query = ""
+
+    private struct NoteTarget: Identifiable { let id: String; let title: String }
+
+    var body: some View {
+        NavigationStack {
+            List(filtered) { t in
+                Button {
+                    let id = t.id
+                    Task { await model.insertImage(asset, into: id) }
+                    dismiss()
+                } label: {
+                    Label(t.title, systemImage: "doc.text")
+                        .lineLimit(1)
+                        .foregroundStyle(Color.rzInk)
+                }
+                .listRowBackground(Color.rzPaper)
+            }
+            .listStyle(.plain)
+            .paperBackground()
+            .overlay {
+                if filtered.isEmpty { ContentUnavailableView.search(text: query) }
+            }
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search notes")
+            .navigationTitle("Insert into…")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    /// Top-level pages (children of root, minus the calendar scaffold) plus journal days.
+    private var targets: [NoteTarget] {
+        guard let doc = model.doc else { return [] }
+        var out: [NoteTarget] = []
+        for id in doc.nodes[doc.root]?.children ?? [] {
+            guard let n = doc.nodes[id], n.cal != "root" else { continue }
+            let t = RichText.plain(n.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+            if !t.isEmpty { out.append(NoteTarget(id: id, title: t)) }
+        }
+        for (id, n) in doc.nodes where n.cal == "day" {
+            let t = RichText.plain(n.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+            if !t.isEmpty { out.append(NoteTarget(id: id, title: t)) }
+        }
+        return out
+    }
+
+    private var filtered: [NoteTarget] {
+        guard !query.isEmpty else { return targets }
+        return targets.filter { fuzzy(query, $0.title) }
+    }
+
+    /// Subsequence fuzzy match: every char of the query appears in order in the title.
+    private func fuzzy(_ query: String, _ title: String) -> Bool {
+        let q = query.lowercased()
+        var it = title.lowercased().makeIterator()
+        for ch in q {
+            var found = false
+            while !found, let c = it.next() { if c == ch { found = true } }
+            if !found { return false }
+        }
+        return true
     }
 }
