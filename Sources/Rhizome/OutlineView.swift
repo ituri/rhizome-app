@@ -56,14 +56,20 @@ struct OutlineRow: View {
                 RichTextEditor(model: model, id: id, source: model.editText)
                     .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
             } else {
-                Text(RichText.attributed(node?.text ?? "", doc: model.doc))
-                    .font(.rz(16.5))
-                    .lineSpacing(3)
-                    .strikethrough(isDone)
-                    .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
-                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
-                    .contentShape(Rectangle())
-                    .onTapGesture { model.beginEdit(id) }
+                // An edit-tap layer BEHIND the text, so tapping anywhere starts editing — while
+                // links/refs in the text (in front) still take their own taps to navigate. A
+                // Text with links otherwise swallows taps, leaving linked bullets uneditable.
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { model.beginEdit(id) }
+                    Text(RichText.attributed(node?.text ?? "", doc: model.doc))
+                        .font(.rz(16.5))
+                        .lineSpacing(3)
+                        .strikethrough(isDone)
+                        .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
+                }
+                .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {

@@ -164,6 +164,11 @@ final class AppModel {
     @ObservationIgnored var editorInsertToken: (@MainActor (String, String) -> Void)?
     func registerTokenInserter(_ insert: @MainActor @escaping (String, String) -> Void) { editorInsertToken = insert }
 
+    // Resign the editor's first responder — used by the keyboard bar's Done button (removing
+    // the SwiftUI view alone doesn't reliably dismiss the UIKit keyboard).
+    @ObservationIgnored var editorResign: (@MainActor () -> Void)?
+    func registerEditorResign(_ resign: @MainActor @escaping () -> Void) { editorResign = resign }
+
     /// The editor produced a new source string for the current row → buffer + debounce-sync.
     func onEditorText(_ source: String) {
         editText = source
@@ -206,12 +211,17 @@ final class AppModel {
         clearLinkSuggestions()
     }
 
-    /// Dismiss the keyboard: commit and drop the editing row (removing its editor resigns first
-    /// responder). Used by the keyboard bar's Done button.
+    /// Dismiss the keyboard from the Done button. Resigning the text view triggers
+    /// textViewDidEndEditing → blurred(), which commits and clears editingID. Fall back to
+    /// dropping the row directly if no editor registered.
     func endEditing() {
-        flushCurrent()
-        editingID = nil
-        clearLinkSuggestions()
+        if let editorResign {
+            editorResign()
+        } else {
+            flushCurrent()
+            editingID = nil
+            clearLinkSuggestions()
+        }
     }
 
     /// The edited field lost focus (keyboard dismissed / tapped elsewhere).

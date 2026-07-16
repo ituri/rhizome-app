@@ -223,6 +223,7 @@ struct RichTextEditor: UIViewRepresentable {
         context.coordinator.textView = tv
         model.registerEditor { [weak coord = context.coordinator] s in coord?.insertSuggestion(s) }
         model.registerTokenInserter { [weak coord = context.coordinator] d, s in coord?.insertTokenAtCaret(display: d, source: s) }
+        model.registerEditorResign { [weak tv] in _ = tv?.resignFirstResponder() }
 
         // The keyboard bar (indent controls + [[/(( suggestion chips) — a SwiftUI
         // .toolbar(.keyboard) doesn't attach to a UIKit first responder, so host it as the
