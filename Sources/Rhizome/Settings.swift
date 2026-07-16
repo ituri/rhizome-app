@@ -38,6 +38,9 @@ struct SettingsView: View {
                         LabeledContent("Role", value: "Admin")
                     }
                     NavigationLink("Change password") { ChangePasswordView() }
+                    if let base = URL(string: model.serverURLString.trimmingCharacters(in: .whitespaces)), base.scheme != nil {
+                        Link("Privacy policy", destination: base.appendingPathComponent("privacy"))
+                    }
                 }
 
                 // ---- Connection (server + graph) ----
