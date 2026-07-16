@@ -619,7 +619,7 @@ final class AppModel {
             line = body
         }
         do {
-            try await api.capture(line)
+            try await api.capture(line, deviceName: deviceName)
             await loadDoc()
         } catch {
             errorMessage = String(describing: error)

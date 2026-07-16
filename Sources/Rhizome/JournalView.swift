@@ -40,12 +40,16 @@ struct JournalView: View {
                                     }
                                     referenceListContent(pageID: day.id, model: model)
                                 } header: {
-                                    Text(day.title)
-                                        .font(.rz(27, .bold))
-                                        .foregroundStyle(Color.rzInk)
-                                        .textCase(nil)
-                                        .padding(.top, 8)
-                                        .padding(.bottom, 2)
+                                    // tapping the date opens the full-page view of that day
+                                    NavigationLink(value: day.id) {
+                                        Text(day.title)
+                                            .font(.rz(27, .bold))
+                                            .foregroundStyle(Color.rzInk)
+                                            .textCase(nil)
+                                            .padding(.top, 8)
+                                            .padding(.bottom, 2)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
