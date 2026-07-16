@@ -5,7 +5,6 @@ import RhizomeKit
 /// Each day is a section of its (editable) notes; the + quick-captures into today.
 struct JournalView: View {
     @Environment(AppModel.self) private var model
-    @FocusState private var focused: String?
     @State private var showingCapture = false
     @State private var captureText = ""
     @State private var showingSettings = false
@@ -32,7 +31,7 @@ struct JournalView: View {
                             ForEach(days) { day in
                                 Section {
                                     ForEach(visibleRows(doc, from: day.id)) { row in
-                                        OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
+                                        OutlineRow(id: row.id, node: doc.nodes[row.id])
                                             .listRowInsets(EdgeInsets(
                                                 top: 5, leading: CGFloat(row.depth) * 18 + 14, bottom: 5, trailing: 14
                                             ))
@@ -70,7 +69,7 @@ struct JournalView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
                 }
-                EditingKeyboardBar(focused: $focused)
+                EditingKeyboardBar()
             }
             .sheet(isPresented: $showingSettings) { SettingsView() }
             .alert("Capture to today", isPresented: $showingCapture) {
@@ -81,7 +80,6 @@ struct JournalView: View {
                 }
                 Button("Cancel", role: .cancel) { captureText = "" }
             }
-            .onChange(of: focused) { _, new in if new == nil { model.blurred() } }
             .onAppear { model.ensureToday() }   // create today's day when entering the journal
             .refreshable { await model.loadDoc() }
         }

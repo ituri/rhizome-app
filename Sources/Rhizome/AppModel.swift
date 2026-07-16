@@ -150,17 +150,17 @@ final class AppModel {
     var editText = ""                 // live buffer for the row being edited
     var linkSuggestions: [LinkSuggestion] = []   // active [[ / (( autocomplete matches
     var linkSuggestKind: LinkKind?
-    private var suppressBlur = false
     private var flushTask: Task<Void, Never>?
 
-    /// Binding for the row being edited. Keystrokes update this buffer only — the
-    /// shared doc isn't mutated per keystroke, so the whole list doesn't rebuild
-    /// while you type — and the change streams to the server after a short debounce.
-    var editBinding: Binding<String> {
-        Binding(
-            get: { [weak self] in self?.editText ?? "" },
-            set: { [weak self] in self?.editText = $0; self?.scheduleFlush(); self?.updateLinkSuggestions() }
-        )
+    // The UITextView editor registers a callback so the keyboard bar's suggestion chips can
+    // insert a link at the real caret. It also streams the serialized source back via onEditorText.
+    @ObservationIgnored var editorInsert: (@MainActor (LinkSuggestion) -> Void)?
+    func registerEditor(_ insert: @MainActor @escaping (LinkSuggestion) -> Void) { editorInsert = insert }
+
+    /// The editor produced a new source string for the current row → buffer + debounce-sync.
+    func onEditorText(_ source: String) {
+        editText = source
+        scheduleFlush()
     }
 
     private func scheduleFlush() {
@@ -187,22 +187,28 @@ final class AppModel {
         clearLinkSuggestions()
     }
 
-    /// Return: save the current line, then open a fresh sibling to keep typing.
-    @discardableResult
-    func returnKey(on id: String) -> String? {
+    /// Return pressed in the rich editor: save this bullet, open a fresh sibling and make it the
+    /// editing row — its editor auto-focuses. The old editor's end-editing is ignored because
+    /// `editingID` has already moved on (see the guard in the editor delegate).
+    func returnFromEditor() {
+        guard let id = editingID else { return }
         flushCurrent()
-        guard let new = insertSibling(after: id) else { editingID = nil; return nil }
-        suppressBlur = true      // the old field's focus loss is a transition, not a real blur
+        guard let new = insertSibling(after: id) else { editingID = nil; return }
         editingID = new
         editText = ""
-        return new
+        clearLinkSuggestions()
     }
 
-    func focusSettled() { suppressBlur = false }
+    /// Dismiss the keyboard: commit and drop the editing row (removing its editor resigns first
+    /// responder). Used by the keyboard bar's Done button.
+    func endEditing() {
+        flushCurrent()
+        editingID = nil
+        clearLinkSuggestions()
+    }
 
     /// The edited field lost focus (keyboard dismissed / tapped elsewhere).
     func blurred() {
-        if suppressBlur { return }
         flushCurrent()
         editingID = nil
         clearLinkSuggestions()
@@ -214,20 +220,20 @@ final class AppModel {
 
     // MARK: - [[ page / (( block autocomplete (like the desktop's caret popup)
 
-    private func clearLinkSuggestions() {
+    func clearLinkSuggestions() {
         if !linkSuggestions.isEmpty { linkSuggestions = [] }
         linkSuggestKind = nil
     }
 
-    /// Recompute the autocomplete list from the text before the caret. We treat the caret as
-    /// the end of the buffer (the common case while typing) and look for the last unclosed
-    /// `[[` (pages) or `((` (blocks); the text after it is the live query.
-    func updateLinkSuggestions() {
+    /// Recompute the autocomplete list from the plain text before the real caret (the editor
+    /// passes it in). Looks for the last unclosed `[[` (pages) or `((` (blocks); the text after
+    /// it is the live query.
+    func updateSuggestions(before: String) {
         guard editingID != nil else { clearLinkSuggestions(); return }
-        if let q = tailQuery(editText, open: "[[", closeChar: "]") {
+        if let q = tailQuery(before, open: "[[", closeChar: "]") {
             linkSuggestKind = .page
             linkSuggestions = pageSuggestions(q)
-        } else if let q = tailQuery(editText, open: "((", closeChar: ")") {
+        } else if let q = tailQuery(before, open: "((", closeChar: ")") {
             linkSuggestKind = .block
             linkSuggestions = blockSuggestions(q)
         } else {
@@ -282,26 +288,26 @@ final class AppModel {
         return Array(out.prefix(8))
     }
 
-    /// Accept a suggestion: replace the `[[query` / `((query` at the caret with the linked
-    /// markup (a real `<a href="#/n/…">` page link, or a live `((id))` block reference),
-    /// then commit so it syncs. Matches what the desktop stores.
+    /// A keyboard-bar chip was tapped → let the active editor splice the token in at the real
+    /// caret (it renders inline and serializes back to source).
     func acceptLinkSuggestion(_ s: LinkSuggestion) {
-        guard let kind = linkSuggestKind else { return }
-        let open = kind == .page ? "[[" : "(("
-        guard let r = editText.range(of: open, options: .backwards) else { clearLinkSuggestions(); return }
-        let markup: String
+        editorInsert?(s)
+    }
+
+    /// The rendered display text + the verbatim source to store for a chosen suggestion:
+    /// a real `<a href="#/n/…">` page link (creating the page if needed), or a live `((id))`
+    /// block reference. Matches what the desktop stores.
+    func tokenSource(for s: LinkSuggestion, kind: LinkKind) -> (display: String, source: String) {
         switch kind {
         case .page:
             let pageID = s.isCreate ? createPage(title: s.title) : s.id
-            guard !pageID.isEmpty else { clearLinkSuggestions(); return }
-            markup = "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(s.title))</a>"
+            guard !pageID.isEmpty else { return ("", "") }
+            return (s.title, "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(s.title))</a>")
         case .block:
-            guard doc?.nodes[s.id] != nil else { clearLinkSuggestions(); return }
-            markup = "((\(s.id)))"
+            guard doc?.nodes[s.id] != nil else { return ("", "") }
+            let display = RichText.plain(doc?.nodes[s.id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+            return (display.isEmpty ? "ref" : display, "((\(s.id)))")
         }
-        editText.replaceSubrange(r.lowerBound..<editText.endIndex, with: markup + " ")
-        clearLinkSuggestions()
-        flushCurrent()   // persist the line with its new link
     }
 
     /// Create a new top-level page with `title`; returns its id.

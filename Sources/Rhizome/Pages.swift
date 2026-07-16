@@ -67,7 +67,6 @@ struct PagesView: View {
 struct PageView: View {
     @Environment(AppModel.self) private var model
     let pageID: String
-    @FocusState private var focused: String?
 
     var body: some View {
         Group {
@@ -76,7 +75,7 @@ struct PageView: View {
                     List {
                         Section {
                             ForEach(visibleRows(doc, from: pageID)) { row in
-                                OutlineRow(id: row.id, node: doc.nodes[row.id], focused: $focused)
+                                OutlineRow(id: row.id, node: doc.nodes[row.id])
                                     .listRowInsets(EdgeInsets(
                                         top: 5, leading: CGFloat(row.depth) * 18 + 14, bottom: 5, trailing: 14
                                     ))
@@ -97,7 +96,7 @@ struct PageView: View {
                     .outlineList()
                     // center the line being edited on screen so the keyboard never covers it —
                     // once the keyboard has settled (and the spacer above has opened up the room)
-                    .onChange(of: focused) { _, new in
+                    .onChange(of: model.editingID) { _, new in
                         guard let new else { return }
                         // two passes: the first catches the common case, the second (a no-op if
                         // already centered) covers a slow keyboard / late layout settle
@@ -118,13 +117,10 @@ struct PageView: View {
             ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    if let new = model.insertChild(of: pageID) {
-                        model.beginEdit(new); focused = new
-                    }
+                    if let new = model.insertChild(of: pageID) { model.beginEdit(new) }
                 } label: { Image(systemName: "plus") }
             }
-            EditingKeyboardBar(focused: $focused)
+            EditingKeyboardBar()
         }
-        .onChange(of: focused) { _, new in if new == nil { model.blurred() } }
     }
 }

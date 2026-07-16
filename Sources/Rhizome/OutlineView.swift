@@ -30,17 +30,14 @@ struct OutlineRow: View {
     @Environment(AppModel.self) private var model
     let id: String
     let node: RNode?
-    @FocusState.Binding var focused: String?
 
     private var hasChildren: Bool { !(node?.children?.isEmpty ?? true) }
     private var isCollapsed: Bool { node?.collapsed ?? false }
     private var isDone: Bool { node?.done ?? false }
 
     var body: some View {
-        // .top (not .firstTextBaseline): a vertical-axis TextField reports its baseline low,
-        // which dropped the cursor well below the bullet. Aligning tops and centering the
-        // marker within one line's height keeps the bullet next to the first line — for both
-        // the editor and wrapped display rows.
+        // .top: align the bullet with the first line of a possibly-wrapped row, and let the
+        // rich editor (a UITextView) sit right next to it.
         HStack(alignment: .top, spacing: 8) {
             Button {
                 if hasChildren { model.toggleCollapse(id) }
@@ -54,29 +51,10 @@ struct OutlineRow: View {
             .disabled(!hasChildren)
 
             if model.editingID == id {
-                // axis: .vertical lets a long line WRAP while typing instead of scrolling off
-                // the edge. The trade-off is that Return now inserts a newline rather than
-                // submitting, so we watch for a newline and turn it into "finish this bullet,
-                // start the next" — the same behaviour the single-line field had via onSubmit.
-                TextField("", text: model.editBinding, axis: .vertical)
-                    .font(.rz(16.5))
-                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // align cursor with the bullet
-                    .autocorrectionDisabled()               // stop iOS silently changing words (Sync → Synck)
-                    .textInputAutocapitalization(.sentences)
-                    .focused($focused, equals: id)
-                    .onChange(of: model.editText) { _, value in
-                        guard model.editingID == id, value.contains("\n") else { return }
-                        model.editText = value.replacingOccurrences(of: "\n", with: "") // Return, not a literal newline
-                        if let next = model.returnKey(on: id) {
-                            // let the List render the new row before we focus it
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                focused = next
-                                model.focusSettled()
-                            }
-                        } else {
-                            focused = nil
-                        }
-                    }
+                // rich inline editor: links/refs/tags render as they do when displayed, long
+                // lines wrap, Return makes a new bullet, and [[ / (( autocomplete at the caret
+                RichTextEditor(model: model, id: id, source: model.editText)
+                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
             } else {
                 Text(RichText.attributed(node?.text ?? "", doc: model.doc))
                     .font(.rz(16.5))
@@ -85,10 +63,7 @@ struct OutlineRow: View {
                     .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
                     .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        model.beginEdit(id)
-                        focused = id
-                    }
+                    .onTapGesture { model.beginEdit(id) }
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -111,7 +86,6 @@ struct OutlineRow: View {
 /// collides with a separately-floating suggestion view.
 struct EditingKeyboardBar: ToolbarContent {
     @Environment(AppModel.self) private var model
-    @FocusState.Binding var focused: String?
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .keyboard) {
@@ -145,7 +119,7 @@ struct EditingKeyboardBar: ToolbarContent {
                     Image(systemName: "checkmark.circle")
                 }
                 Spacer()
-                Button("Done") { focused = nil }
+                Button("Done") { model.endEditing() }
             }
         }
     }
