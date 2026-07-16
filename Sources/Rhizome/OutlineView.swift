@@ -121,3 +121,41 @@ struct EditingKeyboardBar: ToolbarContent {
         }
     }
 }
+
+/// The `[[` (page) / `((` (block) autocomplete strip, shown above the keyboard while a
+/// trigger is active — the mobile counterpart to the desktop's caret popup. Tapping a
+/// chip inserts the link (or creates the page) via `AppModel.acceptLinkSuggestion`.
+struct LinkSuggestionBar: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if !model.linkSuggestions.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(model.linkSuggestions) { s in
+                        Button { model.acceptLinkSuggestion(s) } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: s.isCreate ? "plus.circle"
+                                    : (model.linkSuggestKind == .block ? "text.quote" : "link"))
+                                    .font(.system(size: 12))
+                                Text(s.isCreate ? "Create “\(s.title)”" : s.title)
+                                    .lineLimit(1)
+                                    .font(.rz(15))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Color.rzAccent.opacity(0.12), in: Capsule())
+                            .foregroundStyle(Color.rzAccent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
+            .background(.regularMaterial)
+            .overlay(alignment: .top) { Divider() }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+}

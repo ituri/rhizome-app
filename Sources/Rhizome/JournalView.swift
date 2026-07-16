@@ -83,6 +83,7 @@ struct JournalView: View {
             }
             .onChange(of: focused) { _, new in if new == nil { model.blurred() } }
             .onAppear { model.ensureToday() }   // create today's day when entering the journal
+            .safeAreaInset(edge: .bottom, spacing: 0) { LinkSuggestionBar() }
             .refreshable { await model.loadDoc() }
         }
         .handleNodeLinks(path: $path, model: model)

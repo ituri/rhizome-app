@@ -4,6 +4,16 @@ import SwiftUI
 import Network
 import RhizomeKit
 
+/// What a `[[` / `((` autocomplete is currently linking to.
+enum LinkKind { case page, block }
+
+/// One suggestion in the `[[` (page) / `((` (block) autocomplete list.
+struct LinkSuggestion: Identifiable, Hashable {
+    let id: String       // target node id, or "__create__" for a new page
+    let title: String
+    let isCreate: Bool
+}
+
 /// Observable app state: server URL, the signed-in user, their graphs, and the
 /// currently loaded outline. The session lives in URLSession's cookie storage, so
 /// `bootstrap()` can silently resume a previous login.
@@ -138,6 +148,8 @@ final class AppModel {
     private(set) var parentMap: [String: String] = [:]
     var editingID: String?
     var editText = ""                 // live buffer for the row being edited
+    var linkSuggestions: [LinkSuggestion] = []   // active [[ / (( autocomplete matches
+    var linkSuggestKind: LinkKind?
     private var suppressBlur = false
     private var flushTask: Task<Void, Never>?
 
@@ -147,7 +159,7 @@ final class AppModel {
     var editBinding: Binding<String> {
         Binding(
             get: { [weak self] in self?.editText ?? "" },
-            set: { [weak self] in self?.editText = $0; self?.scheduleFlush() }
+            set: { [weak self] in self?.editText = $0; self?.scheduleFlush(); self?.updateLinkSuggestions() }
         )
     }
 
@@ -172,6 +184,7 @@ final class AppModel {
         if editingID != id { flushCurrent() }
         editingID = id
         editText = doc?.nodes[id]?.text ?? ""
+        clearLinkSuggestions()
     }
 
     /// Return: save the current line, then open a fresh sibling to keep typing.
@@ -192,10 +205,122 @@ final class AppModel {
         if suppressBlur { return }
         flushCurrent()
         editingID = nil
+        clearLinkSuggestions()
         if pendingRemoteRefresh {
             pendingRemoteRefresh = false
             Task { await loadDoc() }   // catch up on remote changes deferred during editing
         }
+    }
+
+    // MARK: - [[ page / (( block autocomplete (like the desktop's caret popup)
+
+    private func clearLinkSuggestions() {
+        if !linkSuggestions.isEmpty { linkSuggestions = [] }
+        linkSuggestKind = nil
+    }
+
+    /// Recompute the autocomplete list from the text before the caret. We treat the caret as
+    /// the end of the buffer (the common case while typing) and look for the last unclosed
+    /// `[[` (pages) or `((` (blocks); the text after it is the live query.
+    func updateLinkSuggestions() {
+        guard editingID != nil else { clearLinkSuggestions(); return }
+        if let q = tailQuery(editText, open: "[[", closeChar: "]") {
+            linkSuggestKind = .page
+            linkSuggestions = pageSuggestions(q)
+        } else if let q = tailQuery(editText, open: "((", closeChar: ")") {
+            linkSuggestKind = .block
+            linkSuggestions = blockSuggestions(q)
+        } else {
+            clearLinkSuggestions()
+        }
+    }
+
+    /// The query after the last `open` marker, or nil if that marker is already closed
+    /// (its close bracket appears after it) or spans a newline.
+    private func tailQuery(_ text: String, open: String, closeChar: Character) -> String? {
+        guard let r = text.range(of: open, options: .backwards) else { return nil }
+        let tail = text[r.upperBound...]
+        if tail.contains(closeChar) || tail.contains("\n") { return nil }
+        return String(tail)
+    }
+
+    private func pageSuggestions(_ query: String) -> [LinkSuggestion] {
+        guard let doc else { return [] }
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        var out: [LinkSuggestion] = []
+        // top-level pages (skip the calendar root)
+        for id in doc.nodes[doc.root]?.children ?? [] where doc.nodes[id]?.cal == nil {
+            let title = RichText.plain(doc.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+            guard !title.isEmpty else { continue }
+            if q.isEmpty || title.lowercased().contains(q) { out.append(LinkSuggestion(id: id, title: title, isCreate: false)) }
+        }
+        // journal day pages, like the desktop's page picker (only when narrowing)
+        if !q.isEmpty {
+            for (id, node) in doc.nodes where node.cal == "day" {
+                let title = (node.text ?? "").trimmingCharacters(in: .whitespaces)
+                if title.lowercased().contains(q) { out.append(LinkSuggestion(id: id, title: title, isCreate: false)) }
+            }
+        }
+        var result = Array(out.prefix(8))
+        if !q.isEmpty, !out.contains(where: { $0.title.lowercased() == q }) {
+            result.append(LinkSuggestion(id: "__create__", title: query.trimmingCharacters(in: .whitespaces), isCreate: true))
+        }
+        return result
+    }
+
+    private func blockSuggestions(_ query: String) -> [LinkSuggestion] {
+        guard let doc else { return [] }
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return [] }   // a bare (( would match everything — wait for a query
+        var out: [LinkSuggestion] = []
+        for (id, node) in doc.nodes where id != editingID && node.cal == nil {
+            let hay = plainCache[id] ?? RichText.plain(node.text ?? "", doc: doc).lowercased()
+            guard hay.contains(q) else { continue }
+            let title = RichText.plain(node.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+            if !title.isEmpty { out.append(LinkSuggestion(id: id, title: title, isCreate: false)) }
+        }
+        return Array(out.prefix(8))
+    }
+
+    /// Accept a suggestion: replace the `[[query` / `((query` at the caret with the linked
+    /// markup (a real `<a href="#/n/…">` page link, or a live `((id))` block reference),
+    /// then commit so it syncs. Matches what the desktop stores.
+    func acceptLinkSuggestion(_ s: LinkSuggestion) {
+        guard let kind = linkSuggestKind else { return }
+        let open = kind == .page ? "[[" : "(("
+        guard let r = editText.range(of: open, options: .backwards) else { clearLinkSuggestions(); return }
+        let markup: String
+        switch kind {
+        case .page:
+            let pageID = s.isCreate ? createPage(title: s.title) : s.id
+            guard !pageID.isEmpty else { clearLinkSuggestions(); return }
+            markup = "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(s.title))</a>"
+        case .block:
+            guard doc?.nodes[s.id] != nil else { clearLinkSuggestions(); return }
+            markup = "((\(s.id)))"
+        }
+        editText.replaceSubrange(r.lowerBound..<editText.endIndex, with: markup + " ")
+        clearLinkSuggestions()
+        flushCurrent()   // persist the line with its new link
+    }
+
+    /// Create a new top-level page with `title`; returns its id.
+    private func createPage(title: String) -> String {
+        guard let root = doc?.root else { return "" }
+        let id = clock.newID()
+        doc?.nodes[id] = RNode(text: title, children: [])
+        if doc?.nodes[root]?.children == nil { doc?.nodes[root]?.children = [] }
+        let ord = doc?.nodes[root]?.children?.count ?? 0
+        doc?.nodes[root]?.children?.append(id)
+        parentMap[id] = root
+        send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: root, ord: ord, data: ["text": .string(title)])])
+        return id
+    }
+
+    private static func escapeHTML(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+         .replacingOccurrences(of: "<", with: "&lt;")
+         .replacingOccurrences(of: ">", with: "&gt;")
     }
 
     private var plainCache: [String: String] = [:]
