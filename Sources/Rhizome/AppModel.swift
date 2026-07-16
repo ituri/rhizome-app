@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import SwiftUI
 import Network
+import CoreLocation
 import RhizomeKit
 
 /// What a `[[` / `((` autocomplete is currently linking to.
@@ -150,12 +151,18 @@ final class AppModel {
     var editText = ""                 // live buffer for the row being edited
     var linkSuggestions: [LinkSuggestion] = []   // active [[ / (( autocomplete matches
     var linkSuggestKind: LinkKind?
+    var locating = false                          // geo button is fetching a fix
+    @ObservationIgnored private let locationFetcher = LocationFetcher()
     private var flushTask: Task<Void, Never>?
 
     // The UITextView editor registers a callback so the keyboard bar's suggestion chips can
     // insert a link at the real caret. It also streams the serialized source back via onEditorText.
     @ObservationIgnored var editorInsert: (@MainActor (LinkSuggestion) -> Void)?
     func registerEditor(_ insert: @MainActor @escaping (LinkSuggestion) -> Void) { editorInsert = insert }
+
+    // Insert an arbitrary (display, source) token at the caret — used by the geo button.
+    @ObservationIgnored var editorInsertToken: (@MainActor (String, String) -> Void)?
+    func registerTokenInserter(_ insert: @MainActor @escaping (String, String) -> Void) { editorInsertToken = insert }
 
     /// The editor produced a new source string for the current row → buffer + debounce-sync.
     func onEditorText(_ source: String) {
@@ -321,6 +328,32 @@ final class AppModel {
         parentMap[id] = root
         send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: root, ord: ord, data: ["text": .string(title)])])
         return id
+    }
+
+    /// Existing top-level page whose title matches `title`, else a freshly created one.
+    private func findOrCreatePage(title: String) -> String {
+        if let doc, let existing = (doc.nodes[doc.root]?.children ?? []).first(where: {
+            doc.nodes[$0]?.cal == nil &&
+            RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces) == title
+        }) { return existing }
+        return createPage(title: title)
+    }
+
+    /// Geo button: fetch the current position and splice it in as a `[[coords]]` page link at
+    /// the caret (find-or-create the coordinates page), so locations become linkable/queryable.
+    func insertGeoLink() async {
+        guard editingID != nil, let insert = editorInsertToken, !locating else { return }
+        locating = true
+        defer { locating = false }
+        do {
+            let coord = try await locationFetcher.current()
+            let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
+            let pageID = findOrCreatePage(title: title)
+            guard !pageID.isEmpty else { return }
+            insert(title, "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
+        } catch {
+            errorMessage = "Standort nicht verfügbar — Zugriff erlaubt?"
+        }
     }
 
     private static func escapeHTML(_ s: String) -> String {

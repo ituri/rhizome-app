@@ -121,6 +121,10 @@ struct KeyboardAccessory: View {
                 Button { if let id = model.editingID { model.toggleDone(id) } } label: {
                     Image(systemName: "checkmark.circle")
                 }
+                Button { Task { await model.insertGeoLink() } } label: {
+                    Image(systemName: model.locating ? "location.fill" : "location")
+                }
+                .disabled(model.locating)
                 Spacer()
                 Button("Done") { model.endEditing() }.fontWeight(.semibold)
             }

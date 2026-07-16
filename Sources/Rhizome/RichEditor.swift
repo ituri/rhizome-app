@@ -222,6 +222,7 @@ struct RichTextEditor: UIViewRepresentable {
         tv.setContentHuggingPriority(.required, for: .vertical)
         context.coordinator.textView = tv
         model.registerEditor { [weak coord = context.coordinator] s in coord?.insertSuggestion(s) }
+        model.registerTokenInserter { [weak coord = context.coordinator] d, s in coord?.insertTokenAtCaret(display: d, source: s) }
 
         // The keyboard bar (indent controls + [[/(( suggestion chips) — a SwiftUI
         // .toolbar(.keyboard) doesn't attach to a UIKit first responder, so host it as the
@@ -361,6 +362,22 @@ struct RichTextEditor: UIViewRepresentable {
             tv.attributedText = m
             tv.selectedRange = NSRange(location: r.location + token.length, length: 0)
             tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink] // keep typing plain after the token
+            textViewDidChange(tv)
+        }
+
+        /// Insert an atomic token (e.g. the geo link) at the caret, no trigger to replace.
+        func insertTokenAtCaret(display: String, source: String) {
+            guard let tv = textView, !source.isEmpty else { return }
+            let caret = min(tv.selectedRange.location, tv.attributedText.length)
+            var attrs = RichEditor.tokenAttributes()
+            attrs[.rzSource] = source
+            let token = NSMutableAttributedString(string: display, attributes: attrs)
+            token.append(NSAttributedString(string: " ", attributes: [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]))
+            let m = NSMutableAttributedString(attributedString: tv.attributedText)
+            m.replaceCharacters(in: NSRange(location: caret, length: 0), with: token)
+            tv.attributedText = m
+            tv.selectedRange = NSRange(location: caret + token.length, length: 0)
+            tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
             textViewDidChange(tv)
         }
     }
