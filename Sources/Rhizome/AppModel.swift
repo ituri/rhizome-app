@@ -1024,37 +1024,45 @@ final class AppModel {
         let monthName = monthFmt.string(from: now)
         let title = "\(monthName) \(day)\(Self.ordinalSuffix(day)), \(year)"   // "July 16th, 2026"
 
-        if doc.nodes.values.contains(where: { $0.cal == "day" && $0.text == title }) {
+        // find days/months/years by their STABLE calendar fields (cd/cm/cy), not the editable title,
+        // so renaming a day doesn't cause a duplicate to be created (matches the web)
+        if doc.nodes.values.contains(where: { $0.cal == "day" && $0.cd == cd }) {
             ensuredDay = cd
             return
         }
         let calRootID = doc.nodes.first(where: { $0.value.cal == "root" })?.key
             ?? insertCalNode(parent: root, cal: "root", text: "📅 Calendar")
-        let yearID = childCalNode(of: calRootID, cal: "year", text: "\(year)")
-            ?? insertCalNode(parent: calRootID, cal: "year", text: "\(year)", extra: ["cy": .int(year)])
-        let monthID = childCalNode(of: yearID, cal: "month", text: monthName)
-            ?? insertCalNode(parent: yearID, cal: "month", text: monthName, extra: ["cm": .int(month - 1), "cy": .int(year)])
-        let dayID = insertCalNode(parent: monthID, cal: "day", text: title, extra: ["cd": .string(cd)])
+        let yearID = childCalNode(of: calRootID, cal: "year", match: { $0.cy == year }, fallbackText: "\(year)")
+            ?? insertCalNode(parent: calRootID, cal: "year", text: "\(year)", cy: year)
+        let monthID = childCalNode(of: yearID, cal: "month", match: { $0.cm == month - 1 }, fallbackText: monthName)
+            ?? insertCalNode(parent: yearID, cal: "month", text: monthName, cm: month - 1, cy: year)
+        let dayID = insertCalNode(parent: monthID, cal: "day", text: title, cd: cd)
         _ = insertChild(of: dayID)   // an empty bullet so the day is immediately writable
         ensuredDay = cd
     }
 
-    private func childCalNode(of parent: String, cal: String, text: String) -> String? {
-        doc?.nodes[parent]?.children?.first { doc?.nodes[$0]?.cal == cal && doc?.nodes[$0]?.text == text }
+    private func childCalNode(of parent: String, cal: String, match: (RNode) -> Bool, fallbackText: String) -> String? {
+        doc?.nodes[parent]?.children?.first {
+            guard let n = doc?.nodes[$0], n.cal == cal else { return false }
+            return match(n) || n.text == fallbackText   // fallback for older nodes lacking cm/cy
+        }
     }
 
-    /// Append a calendar node (root/year/month/day) under `parent`, mirroring it into the
-    /// insert op's data (incl. cd/cm/cy) so the server stores a proper calendar node.
+    /// Append a calendar node (root/year/month/day) under `parent`, storing the stable calendar
+    /// fields (cd/cm/cy) both locally and in the insert op so day identity survives title edits.
     @discardableResult
-    private func insertCalNode(parent: String, cal: String, text: String, extra: [String: JSONValue] = [:]) -> String {
+    private func insertCalNode(parent: String, cal: String, text: String,
+                               cd: String? = nil, cm: Int? = nil, cy: Int? = nil) -> String {
         let id = clock.newID()
-        doc?.nodes[id] = RNode(text: text, children: [], cal: cal)
+        doc?.nodes[id] = RNode(text: text, children: [], cal: cal, cd: cd, cm: cm, cy: cy)
         if doc?.nodes[parent]?.children == nil { doc?.nodes[parent]?.children = [] }
         let ord = doc?.nodes[parent]?.children?.count ?? 0
         doc?.nodes[parent]?.children?.append(id)
         parentMap[id] = parent
         var data: [String: JSONValue] = ["text": .string(text), "cal": .string(cal)]
-        for (k, v) in extra { data[k] = v }
+        if let cd { data["cd"] = .string(cd) }
+        if let cm { data["cm"] = .int(cm) }
+        if let cy { data["cy"] = .int(cy) }
         send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: parent, ord: ord, data: data)])
         return id
     }
