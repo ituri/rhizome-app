@@ -30,28 +30,31 @@ struct AttachmentImageView: View {
     var body: some View {
         Group {
             if let image {
+                // explicit aspect ratio → stable size from the first render (no collapse until the
+                // row is re-measured); no max width → it fills the available column width. The delete
+                // "×" overlay is applied to the IMAGE (before the width-filling frame) so it hugs the
+                // picture's corner instead of floating in the trailing space of a wider frame.
                 Image(uiImage: image)
                     .resizable()
-                    // an explicit aspect ratio + max frame fully determines the size, so it no longer
-                    // renders tiny until the row is re-measured (e.g. by selecting it)
                     .aspectRatio(image.size.width / max(image.size.height, 1), contentMode: .fit)
-                    .frame(maxWidth: 280, maxHeight: 360, alignment: .leading)
+                    .frame(maxHeight: 420)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onTap)
                     .overlay(alignment: .topTrailing) {
                         Button(action: onDelete) {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 22))
+                                .font(.system(size: 24))
                                 .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .black.opacity(0.45))
+                                .foregroundStyle(.white, .black.opacity(0.5))
                         }
                         .padding(6)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.rzLineSoft)
-                    .frame(width: 180, height: 130)
+                    .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
                     .overlay { ProgressView() }
             }
         }

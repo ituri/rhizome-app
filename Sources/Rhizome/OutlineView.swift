@@ -128,10 +128,14 @@ struct OutlineRow: View {
                     }
                     attachments
                     if hasFiles && !hasText {
+                        // tapping below an image starts a fresh line beneath it (a new sibling), so
+                        // you can keep writing under the picture
                         Color.clear
                             .frame(maxWidth: .infinity, minHeight: lineH)
                             .contentShape(Rectangle())
-                            .onTapGesture { model.beginEdit(id) }
+                            .onTapGesture {
+                                if let new = model.insertSibling(after: id) { model.beginEdit(new) }
+                            }
                     }
                 }
             }
