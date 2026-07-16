@@ -1,16 +1,8 @@
 import Foundation
 
-/// Shared configuration for the app and its extensions. Point this at your own
-/// Rhizome instance.
+/// Shared visual configuration. The server URL is entered on the sign-in screen,
+/// so there's no hard-coded instance here.
 public enum Config {
-    /// The Rhizome server. Change this if you self-host elsewhere.
-    public static let serverURL = URL(string: "https://rhizome.syslinx.org")!
-
-    /// A write-scoped `rzk_…` API key for the Share Extension's quick-capture
-    /// (it POSTs to `/api/capture?token=…`). Lives in `Secrets.swift`, which is
-    /// git-ignored so the key never lands in version control.
-    public static var captureToken: String { Secrets.captureToken }
-
     /// The app's paper background — the web `--bg` (#f7f5f0).
     public static let background = (red: 0.9712, green: 0.9647, blue: 0.9447)
 

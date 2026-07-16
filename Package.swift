@@ -14,14 +14,9 @@ let package = Package(
             name: "Rhizome",
             targets: ["Rhizome"]
         ),
-        // The Share Extension (native quick-capture).
-        .library(
-            name: "RhizomeShare",
-            targets: ["RhizomeShare"]
-        ),
     ],
     targets: [
-        // Shared config + capture client, used by both the app and the extension.
+        // Shared config + API client.
         .target(
             name: "RhizomeKit"
         ),
@@ -29,10 +24,6 @@ let package = Package(
             name: "Rhizome",
             dependencies: ["RhizomeKit"],
             resources: [.process("Resources")]
-        ),
-        .target(
-            name: "RhizomeShare",
-            dependencies: ["RhizomeKit"]
         ),
     ]
 )

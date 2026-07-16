@@ -38,8 +38,8 @@ screen) and sign in with your account.
   spacing, image-downscale percentage, Face ID / Touch ID lock, haptics, change
   password, delete account. The *timestamp quick-capture* preference syncs across
   your devices (web ⇄ iOS).
-- **Share Extension** — quick-capture text or a link from any app into today's
-  Inbox (see below).
+- **Quick capture** — the `+` button in the Journal drops a note straight into
+  today's Inbox, time-stamped like the `r` shell command.
 - **Privacy-friendly** — no analytics or tracking SDKs; your notes only ever go to
   the server you sign in to. Ships a `PrivacyInfo.xcprivacy` manifest.
 
@@ -76,11 +76,10 @@ For shipping to TestFlight, see [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
 
 ## Configure it for your own instance
 
-1. **Server URL** — set it once on the sign-in screen, or change the default in
-   `Sources/RhizomeKit/Config.swift` (`Config.serverURL`).
-2. **Bundle ID** — change `bundleID` in `xtool.yml` (and the extension's) from
-   `org.syslinx.rhizome` to something under your own domain.
-3. **Share Extension token** — see below.
+1. **Server URL** — type your Rhizome instance's URL on the sign-in screen. There
+   is no hard-coded default.
+2. **Bundle ID** — change `bundleID` in `xtool.yml` from `org.syslinx.rhizome` to
+   something under your own domain.
 
 ### Linux notes
 
@@ -91,40 +90,18 @@ For shipping to TestFlight, see [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
   `libncursesw.so.6`. Symlink it into the toolchain's `usr/lib/swift/linux/`
   directory if the toolchain fails to load `libncurses`.
 
-## Native quick-capture (Share Extension)
-
-Share text or a link from any app → **Rhizome Inbox** and it lands under today's
-journal, time-stamped like the `r` shell command. To enable it, create a
-**write-scoped `rzk_…` API key** in the web app (*Account → API keys*) and put it
-in `Sources/RhizomeKit/Secrets.swift`:
-
-```swift
-static let captureToken = "rzk_…"
-```
-
-`Secrets.swift` is committed empty; keep your key out of git locally with:
-
-```sh
-git update-index --skip-worktree Sources/RhizomeKit/Secrets.swift
-```
-
-(undo with `--no-skip-worktree`). Until a key is set, the extension's *Post*
-button stays disabled. Rebuild after editing.
-
 ## Project layout
 
 ```
-Package.swift                     SwiftPM manifest (app + Share Extension)
-xtool.yml                         xtool manifest (bundle ID, icon, extension)
+Package.swift                     SwiftPM manifest
+xtool.yml                         xtool manifest (bundle ID, icon)
 Info.plist                        app Info.plist (permission strings, iPhone-only)
 Icon.png                          1024×1024 app icon
 docs/TESTFLIGHT.md                guide for shipping to TestFlight
 
-Sources/RhizomeKit/               shared by the app + the Share Extension
+Sources/RhizomeKit/               shared, UI-independent core
   API.swift                       async HTTP client + wire models
-  Config.swift                    default server URL, accent, capture token
-  Capture.swift                   POSTs a line to /api/capture (like `r`)
-  Secrets.swift                   the capture API key (git-skipped)
+  Config.swift                    accent / background colours
   Ops.swift  RichText.swift  Journal.swift  Highlight.swift  Accent.swift
 
 Sources/Rhizome/                  the app
@@ -137,15 +114,10 @@ Sources/Rhizome/                  the app
   PageHistory.swift  References.swift  Navigation.swift
   GeoMap.swift  Location.swift    coordinates + OpenStreetMap
   Attachments.swift  Haptics.swift  Fonts.swift  Theme.swift  LocalStore.swift
-
-Sources/RhizomeShare/
-  ShareViewController.swift       compose sheet → quick-capture into the Inbox
 ```
 
 ## Roadmap
 
-- Move the capture token out of source into a Settings screen, shared to the
-  extension via an App Group / Keychain (App Groups on device need a paid team).
 - Home-screen widget / App Shortcut for one-tap capture.
 - Push notifications (needs a paid Apple Developer account).
 - An iPad-optimised layout (the app is iPhone-only for now).

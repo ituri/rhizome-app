@@ -3,7 +3,3 @@ bundleID: org.syslinx.rhizome
 product: Rhizome
 iconPath: Icon.png
 infoPath: Info.plist
-extensions:
-  - product: RhizomeShare
-    bundleID: org.syslinx.rhizome.Share
-    infoPath: RhizomeShare-Info.plist
