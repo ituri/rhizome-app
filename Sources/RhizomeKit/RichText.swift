@@ -104,7 +104,7 @@ public enum RichText {
     // MARK: styled text emission ( #tags / [[links]] / ((refs)) inside a text run )
 
     private static let tokenRE = try? NSRegularExpression(
-        pattern: #"(\(\([A-Za-z0-9_-]+\)\))|(#\[\[[^\]]+\]\])|(#[\p{L}0-9_\-]+)|(\[\[[^\]]+\]\])"#
+        pattern: #"(https?://[^\s<>()]+)|(\(\([A-Za-z0-9_-]+\)\))|(#\[\[[^\]]+\]\])|(#[\p{L}0-9_\-]+)|(\[\[[^\]]+\]\])"#
     )
 
     private static func appendStyled(_ text: String, _ style: Style, _ out: inout AttributedString, _ doc: RDoc?) {
@@ -116,7 +116,23 @@ public enum RichText {
                 append(ns.substring(with: NSRange(location: last, length: m.range.location - last)), style, accent: false, &out)
             }
             let token = ns.substring(with: m.range)
-            if token.hasPrefix("((") {
+            if token.hasPrefix("http://") || token.hasPrefix("https://") {
+                if style.link != nil {
+                    append(token, style, accent: false, &out)   // already inside an explicit <a href>
+                } else {
+                    // don't swallow trailing sentence punctuation into the URL
+                    var url = token, trailing = ""
+                    while let last = url.last, ".,;:!?".contains(last) { trailing = String(last) + trailing; url = String(url.dropLast()) }
+                    if let u = URL(string: url) {
+                        var s = style
+                        s.link = u
+                        append(url, s, accent: true, &out)
+                    } else {
+                        append(url, style, accent: false, &out)
+                    }
+                    if !trailing.isEmpty { append(trailing, style, accent: false, &out) }
+                }
+            } else if token.hasPrefix("((") {
                 let id = String(token.dropFirst(2).dropLast(2))
                 let target = doc?.nodes[id]?.text ?? ""
                 var s = style
