@@ -57,20 +57,33 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Theme", selection: $model.theme) {
+                        ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
+                    }
+                    Picker("Accent", selection: $model.accent) {
+                        ForEach(AccentChoice.allCases) { a in
+                            HStack {
+                                Circle().fill(rzAccentColor(a)).frame(width: 14, height: 14)
+                                Text(a.label)
+                            }.tag(a)
+                        }
+                    }
                     Stepper(value: $model.fontSize, in: 12...28, step: 0.5) {
                         LabeledContent("Font size", value: String(format: "%.1f pt", model.fontSize))
                     }
                     Stepper(value: $model.lineSpacing, in: 0...14, step: 1) {
                         LabeledContent("Line spacing", value: String(format: "%.0f pt", model.lineSpacing))
                     }
-                    Text("The quick brown fox jumps over the lazy dog.")
+                    // live preview of size, spacing and accent (tag + link tones)
+                    Text(RichText.attributed("The quick #brown fox jumps over the lazy dog.", doc: nil))
                         .font(.rz(model.fontSize))
                         .lineSpacing(model.lineSpacing)
                         .foregroundStyle(Color.rzInk)
+                    Button("Reset to defaults", role: .destructive) { model.resetDesign() }
                 } header: {
                     Text("Display")
                 } footer: {
-                    Text("Text size and spacing for outline bullets.")
+                    Text("Theme, accent, and the text size and spacing for outline bullets.")
                 }
 
                 Section {

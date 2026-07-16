@@ -63,16 +63,43 @@ final class AppModel {
         didSet { UserDefaults.standard.set(lineSpacing, forKey: "lineSpacing"); RichEditor.lineSpacing = CGFloat(lineSpacing) }
     }
 
+    /// Colour scheme: Light / Auto / Dark (mirrors the web app).
+    var theme: AppTheme {
+        didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
+    }
+
+    /// Accent colour: Clay / Sage / Indigo / Ink (mirrors the web app).
+    var accent: AccentChoice {
+        didSet { UserDefaults.standard.set(accent.rawValue, forKey: "accent"); RZTheme.accent = accent }
+    }
+
+    // Design defaults, shared with the Settings "reset" action.
+    static let defaultFontSize = 16.5
+    static let defaultLineSpacing = 3.0
+    static let defaultTheme = AppTheme.auto
+    static let defaultAccent = AccentChoice.clay
+
+    /// Restore the design settings (text size, spacing, theme, accent) to their defaults.
+    func resetDesign() {
+        fontSize = Self.defaultFontSize
+        lineSpacing = Self.defaultLineSpacing
+        theme = Self.defaultTheme
+        accent = Self.defaultAccent
+    }
+
     init() {
         let saved = UserDefaults.standard.string(forKey: "serverURL")
         serverURLString = saved ?? Config.serverURL.absoluteString
         activeGraphID = UserDefaults.standard.string(forKey: "activeGraphID")
         captureTimestamp = UserDefaults.standard.object(forKey: "captureTimestamp") as? Bool ?? true
         deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? UIDevice.current.name
-        fontSize = UserDefaults.standard.object(forKey: "fontSize") as? Double ?? 16.5
-        lineSpacing = UserDefaults.standard.object(forKey: "lineSpacing") as? Double ?? 3
+        fontSize = UserDefaults.standard.object(forKey: "fontSize") as? Double ?? Self.defaultFontSize
+        lineSpacing = UserDefaults.standard.object(forKey: "lineSpacing") as? Double ?? Self.defaultLineSpacing
+        theme = UserDefaults.standard.string(forKey: "theme").flatMap(AppTheme.init) ?? Self.defaultTheme
+        accent = UserDefaults.standard.string(forKey: "accent").flatMap(AccentChoice.init) ?? Self.defaultAccent
         RichEditor.fontSize = CGFloat(fontSize)
         RichEditor.lineSpacing = CGFloat(lineSpacing)
+        RZTheme.accent = accent
     }
 
     var api: RhizomeAPI? {

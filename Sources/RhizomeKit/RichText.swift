@@ -8,9 +8,19 @@ import SwiftUI
 /// and `((block references))` — into a styled `AttributedString`.
 public enum RichText {
     #if canImport(SwiftUI)
-    public static let accent = Color(
-        red: Config.accent.red, green: Config.accent.green, blue: Config.accent.blue
-    )
+    /// The accent for tags/links in displayed text — follows the selected accent, and (on UIKit)
+    /// the light/dark theme, so it re-resolves when the colour scheme flips.
+    public static var accent: Color {
+        let a = RZTheme.accent
+        #if canImport(UIKit)
+        return Color(uiColor: UIColor { trait in
+            let c = trait.userInterfaceStyle == .dark ? a.dark : a.light
+            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
+        #else
+        return Color(red: a.light.0, green: a.light.1, blue: a.light.2)
+        #endif
+    }
     #endif
 
     /// Markup stripped to plain text (for titles etc.).

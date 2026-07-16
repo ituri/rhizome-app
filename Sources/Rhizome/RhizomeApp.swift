@@ -11,8 +11,8 @@ struct RhizomeApp: App {
         WindowGroup {
             ContentView()
                 .environment(model)
-                .tint(.rzAccent)
-                .preferredColorScheme(.light)
+                .tint(rzAccentColor(model.accent))
+                .preferredColorScheme(model.theme.colorScheme)
                 .task { await model.bootstrap() }
         }
         .onChange(of: scenePhase) { _, phase in

@@ -36,16 +36,21 @@ struct OutlineRow: View {
     private var isDone: Bool { node?.done ?? false }
 
     var body: some View {
+        _ = model.accent   // re-render this row live when the accent changes
+        // The bullet must stay vertically centred on the first text line at ANY font size, so it
+        // shares the line's height (the text box's height) and is centred within it — a fixed
+        // height drifts off-centre as the font grows/shrinks.
+        let lineH = RichEditor.font().lineHeight
         // .top: align the bullet with the first line of a possibly-wrapped row, and let the
         // rich editor (a UITextView) sit right next to it.
-        HStack(alignment: .top, spacing: 8) {
+        return HStack(alignment: .top, spacing: 8) {
             Button {
                 if hasChildren { model.toggleCollapse(id) }
             } label: {
                 Image(systemName: hasChildren ? (isCollapsed ? "chevron.right" : "chevron.down") : "circle.fill")
                     .font(.system(size: hasChildren ? 11 : 5, weight: .semibold))
                     .foregroundStyle(Color.rzInkFaint)
-                    .frame(width: 14, height: 26, alignment: .center)
+                    .frame(width: 14, height: lineH, alignment: .center)
             }
             .buttonStyle(.plain)
             .disabled(!hasChildren)
@@ -54,7 +59,7 @@ struct OutlineRow: View {
                 // rich inline editor: links/refs/tags render as they do when displayed, long
                 // lines wrap, Return makes a new bullet, and [[ / (( autocomplete at the caret
                 RichTextEditor(model: model, id: id, source: model.editText)
-                    .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
             } else {
                 // An edit-tap layer BEHIND the text, so tapping anywhere starts editing — while
                 // links/refs in the text (in front) still take their own taps to navigate. A
@@ -74,7 +79,7 @@ struct OutlineRow: View {
                         .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
                         .allowsHitTesting(hasLinks)
                 }
-                .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading) // stay tappable when empty
+                .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading) // stay tappable when empty
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {

@@ -19,7 +19,15 @@ enum RichEditor {
     // configurable from Settings (AppModel mirrors the persisted values into these)
     static var fontSize: CGFloat = 16.5
     static var lineSpacing: CGFloat = 3
-    static let ink = UIColor(red: 0.1847, green: 0.14, blue: 0.1105, alpha: 1)
+    // dynamic so the editor's text follows the selected theme (light/dark) and accent
+    static var ink: UIColor {
+        UIColor { trait in
+            let c: (Double, Double, Double) = trait.userInterfaceStyle == .dark
+                ? (0.8975, 0.8815, 0.849) : (0.1847, 0.14, 0.1105)
+            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        }
+    }
+    static var accent: UIColor { rzAccentUIColor(RZTheme.accent) }
 
     /// The paragraph style carrying the configured line spacing, applied across the whole editor.
     static func paragraphStyle() -> NSParagraphStyle {
@@ -27,9 +35,6 @@ enum RichEditor {
         p.lineSpacing = lineSpacing
         return p
     }
-    static let accent = UIColor(
-        red: CGFloat(Config.accent.red), green: CGFloat(Config.accent.green), blue: CGFloat(Config.accent.blue), alpha: 1
-    )
 
     static func font(_ fmt: String = "") -> UIFont {
         let name = fmt.contains("c") ? "Menlo" : "Inter"
@@ -258,7 +263,7 @@ struct RichTextEditor: UIViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         guard let width = proposal.width, width > 0 else { return nil }
         let h = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        return CGSize(width: width, height: max(h, 26))
+        return CGSize(width: width, height: max(h, RichEditor.font().lineHeight))
     }
 
     @MainActor
