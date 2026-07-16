@@ -121,6 +121,7 @@ struct PageView: View {
                 } label: { Image(systemName: "plus") }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { KeyboardAccessory(model: model) }
         .geoAlert(model)
     }
 }

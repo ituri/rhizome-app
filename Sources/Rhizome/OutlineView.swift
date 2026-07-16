@@ -86,14 +86,18 @@ struct OutlineRow: View {
     }
 }
 
-/// Keyboard accessory for the rich editor, hosted as the UITextView's `inputAccessoryView`
-/// (a SwiftUI `.toolbar(.keyboard)` does NOT attach to a UIKit first responder, so it would
-/// otherwise vanish). While a `[[` / `((` trigger is open it shows the autocomplete chips,
-/// otherwise the indent / outdent / done / dismiss controls.
+/// Keyboard accessory for the rich editor, added as a SwiftUI `.safeAreaInset(.bottom)` so it
+/// floats above the keyboard and — unlike a UIHostingController hosted as inputAccessoryView —
+/// its buttons actually receive taps. Only present while editing. While a `[[` / `((` trigger
+/// is open it shows the autocomplete chips, otherwise the indent / done / geo controls.
 struct KeyboardAccessory: View {
     let model: AppModel
 
     var body: some View {
+        if model.editingID != nil { bar }
+    }
+
+    private var bar: some View {
         HStack(spacing: 14) {
             if !model.linkSuggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {

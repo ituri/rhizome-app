@@ -81,6 +81,7 @@ struct JournalView: View {
             }
             .onAppear { model.ensureToday() }   // create today's day when entering the journal
             .refreshable { await model.loadDoc() }
+            .safeAreaInset(edge: .bottom, spacing: 0) { KeyboardAccessory(model: model) }
             .geoAlert(model)
         }
         .handleNodeLinks(path: $path, model: model)

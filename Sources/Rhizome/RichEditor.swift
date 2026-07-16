@@ -225,18 +225,9 @@ struct RichTextEditor: UIViewRepresentable {
         model.registerEditor { [weak coord = context.coordinator] s in coord?.insertSuggestion(s) }
         model.registerEditorReload { [weak coord = context.coordinator] in coord?.reloadFromModel() }
         model.registerEditorResign { [weak tv] in _ = tv?.resignFirstResponder() }
-
-        // The keyboard bar (indent controls + [[/(( suggestion chips) — a SwiftUI
-        // .toolbar(.keyboard) doesn't attach to a UIKit first responder, so host it as the
-        // text view's inputAccessoryView. Its SwiftUI content updates live with the model.
-        let accessory = UIHostingController(rootView: KeyboardAccessory(model: model))
-        // start with any width; the system stretches the accessory to the keyboard via .flexibleWidth
-        accessory.view.frame = CGRect(x: 0, y: 0, width: 393, height: 48)
-        accessory.view.autoresizingMask = .flexibleWidth
-        accessory.view.backgroundColor = .clear
-        context.coordinator.accessory = accessory
-        tv.inputAccessoryView = accessory.view
         return tv
+        // NB: the keyboard bar lives as a SwiftUI .safeAreaInset(KeyboardAccessory) in the views
+        // now — a UIHostingController hosted as inputAccessoryView didn't receive button taps.
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
@@ -260,7 +251,6 @@ struct RichTextEditor: UIViewRepresentable {
         let model: AppModel
         let id: String
         weak var textView: UITextView?
-        var accessory: UIHostingController<KeyboardAccessory>?   // retains the keyboard bar
         private var lastSource: String
 
         init(model: AppModel, id: String) { self.model = model; self.id = id; self.lastSource = model.editText }
