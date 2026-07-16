@@ -132,6 +132,9 @@ struct OutlineRow: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
                 }
+                if let c = model.linkedCoords(in: node?.text ?? "") {
+                    GeoMapView(lat: c.lat, lon: c.lon)   // mini-map under a bullet referencing a place
+                }
             }
         }
         .fullScreenCover(item: $viewer) { v in ImageViewer(url: v.url) }

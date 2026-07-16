@@ -524,6 +524,7 @@ final class AppModel {
         let pageID = findOrCreatePage(title: title)
         guard !pageID.isEmpty else { return }
         appendGeo(to: id, source: "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
+        await geocodeAndRetitle(pageID, lat: coord.latitude, lon: coord.longitude)   // resolve the address + retitle
     }
 
     /// Append a source fragment to a bullet (separated by a space) and sync. If that bullet is
@@ -542,6 +543,82 @@ final class AppModel {
         s.replacingOccurrences(of: "&", with: "&amp;")
          .replacingOccurrences(of: "<", with: "&lt;")
          .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    // MARK: - Geo (reverse geocoding + coordinates, mirroring the web app)
+
+    private static let coordRE = try? NSRegularExpression(pattern: #"(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)"#)
+
+    /// Parse "lat, lon" out of text (tags stripped), validating ranges.
+    func parseCoords(_ text: String) -> (lat: Double, lon: Double)? {
+        let s = RichText.plain(text, doc: doc)
+        let ns = s as NSString
+        guard let m = Self.coordRE?.firstMatch(in: s, range: NSRange(location: 0, length: ns.length)), m.numberOfRanges >= 3,
+              let lat = Double(ns.substring(with: m.range(at: 1))), let lon = Double(ns.substring(with: m.range(at: 2))),
+              abs(lat) <= 90, abs(lon) <= 180 else { return nil }
+        return (lat, lon)
+    }
+
+    /// A location page's coordinate — from its first bullet, else its own title.
+    func pageCoords(_ id: String) -> (lat: Double, lon: Double)? {
+        guard let n = doc?.nodes[id] else { return nil }
+        if let first = n.children?.first, let c = parseCoords(doc?.nodes[first]?.text ?? "") { return c }
+        return parseCoords(n.text ?? "")
+    }
+
+    /// The coordinate of the first location page a bullet's text links to, else nil.
+    func linkedCoords(in text: String) -> (lat: Double, lon: Double)? {
+        guard text.contains("#/n/") else { return nil }
+        let ns = text as NSString
+        guard let re = try? NSRegularExpression(pattern: #"href=\"#/n/([A-Za-z0-9_-]+)\""#) else { return nil }
+        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            if let c = pageCoords(ns.substring(with: m.range(at: 1))) { return c }
+        }
+        return nil
+    }
+
+    /// Reverse-geocode a fresh coordinate page: keep the raw coords in its first bullet, retitle the
+    /// page to the address, and relabel links whose text is still the raw coords (mirrors the web).
+    func geocodeAndRetitle(_ pageID: String, lat: Double, lon: Double) async {
+        guard let api, doc?.nodes[pageID] != nil else { return }
+        let address = (try? await api.reverseGeocode(lat: lat, lon: lon)) ?? ""
+        guard !address.isEmpty, parseCoords(doc?.nodes[pageID]?.text ?? "") != nil else { return }
+        let coordsText = String(format: "%.5f, %.5f", lat, lon)
+        let first = doc?.nodes[pageID]?.children?.first
+        if first.flatMap({ parseCoords(doc?.nodes[$0]?.text ?? "") }) == nil {
+            let newID = clock.newID()
+            doc?.nodes[newID] = RNode(text: Self.escapeHTML(coordsText), children: [])
+            if doc?.nodes[pageID]?.children == nil { doc?.nodes[pageID]?.children = [] }
+            doc?.nodes[pageID]?.children?.insert(newID, at: 0)
+            parentMap[newID] = pageID
+            send([Op(kind: "insert", node: newID, hlc: clock.stamp(), parent: pageID, ord: 0, data: ["text": .string(Self.escapeHTML(coordsText))])])
+        }
+        let addr = Self.escapeHTML(address)
+        doc?.nodes[pageID]?.text = addr
+        send([Op(kind: "update", node: pageID, hlc: clock.stamp(), patch: ["text": .string(addr)])])
+        // relabel every link whose visible label is still the raw coordinates → the address
+        for nid in (doc?.nodes.keys).map(Array.init) ?? [] {
+            guard let t = doc?.nodes[nid]?.text, t.contains("#/n/\(pageID)\"") else { continue }
+            let relabeled = relabelCoordLinks(t, pageID: pageID, label: addr)
+            if relabeled != t {
+                doc?.nodes[nid]?.text = relabeled
+                if editingID == nid { editText = relabeled; editorReload?() }
+                send([Op(kind: "update", node: nid, hlc: clock.stamp(), patch: ["text": .string(relabeled)])])
+            }
+        }
+    }
+
+    private func relabelCoordLinks(_ html: String, pageID: String, label: String) -> String {
+        let esc = NSRegularExpression.escapedPattern(for: pageID)
+        guard let re = try? NSRegularExpression(pattern: "(<a href=\"#/n/\(esc)\"[^>]*>)([^<]*)(</a>)") else { return html }
+        var result = html as NSString
+        for m in re.matches(in: html, range: NSRange(location: 0, length: (html as NSString).length)).reversed() {
+            if parseCoords(result.substring(with: m.range(at: 2))) != nil {
+                let repl = result.substring(with: m.range(at: 1)) + label + result.substring(with: m.range(at: 3))
+                result = result.replacingCharacters(in: m.range, with: repl) as NSString
+            }
+        }
+        return result as String
     }
 
     private var plainCache: [String: String] = [:]

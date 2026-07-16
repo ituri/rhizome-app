@@ -131,6 +131,15 @@ public struct RhizomeAPI: Sendable {
         _ = try await post("api/account/password", body: Body(current: current, next: next))
     }
 
+    /// Reverse-geocode a coordinate to a short address (server-side, same result as the web app).
+    public func reverseGeocode(lat: Double, lon: Double) async throws -> String {
+        var comps = URLComponents(url: baseURL.appendingPathComponent("api/geocode"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "lat", value: String(lat)), URLQueryItem(name: "lon", value: String(lon))]
+        let data = try await send(URLRequest(url: comps.url!))
+        struct R: Decodable { let address: String? }
+        return (try JSONDecoder().decode(R.self, from: data)).address ?? ""
+    }
+
     public func me() async throws -> RMe {
         let data = try await get("api/me")
         return try JSONDecoder().decode(RMe.self, from: data)
