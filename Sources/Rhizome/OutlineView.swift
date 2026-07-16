@@ -33,10 +33,13 @@ struct OutlineRow: View {
     let id: String
     let node: RNode?
 
+    @State private var viewer: ViewerImage?   // the attachment shown full-screen
+
     private var hasChildren: Bool { !(node?.children?.isEmpty ?? true) }
     private var isCollapsed: Bool { node?.collapsed ?? false }
     private var isDone: Bool { node?.done ?? false }
     private var isTodo: Bool { node?.format == "todo" }
+    private var hasFiles: Bool { !(node?.files?.isEmpty ?? true) }
 
     /// Image / file attachments rendered below the bullet's text.
     @ViewBuilder
@@ -44,15 +47,11 @@ struct OutlineRow: View {
         if let files = node?.files, !files.isEmpty {
             ForEach(files, id: \.url) { f in
                 if (f.type ?? "").hasPrefix("image/"), let url = model.fileURL(f.url) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFit()
-                        case .failure: Image(systemName: "photo").foregroundStyle(Color.rzInkFaint)
-                        default: ProgressView()
-                        }
-                    }
-                    .frame(maxWidth: 260, maxHeight: 260, alignment: .leading)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    AttachmentImageView(
+                        url: url,
+                        onDelete: { model.removeFile(f.url, from: id) },
+                        onTap: { viewer = ViewerImage(url: url) }
+                    )
                 } else if let url = model.fileURL(f.url) {
                     Link(destination: url) {
                         Label(f.name ?? "file", systemImage: "paperclip").font(.rz(14))
@@ -60,6 +59,24 @@ struct OutlineRow: View {
                 }
             }
         }
+    }
+
+    /// The bullet's text — a tap-to-edit layer behind the rendered text (links stay tappable).
+    @ViewBuilder
+    private func textDisplay(_ raw: String, _ lineH: CGFloat) -> some View {
+        let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { model.beginEdit(id) }
+            Text(RichText.attributed(raw, doc: model.doc))
+                .font(.rz(model.fontSize))
+                .lineSpacing(model.lineSpacing)
+                .strikethrough(isDone)
+                .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
+                .allowsHitTesting(hasLinks)
+        }
+        .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)   // stay tappable when empty
     }
 
     var body: some View {
@@ -94,35 +111,32 @@ struct OutlineRow: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
+                let raw = node?.text ?? ""
+                let hasText = !RichText.plain(raw, doc: model.doc).isEmpty
                 if model.editingID == id {
                     // rich inline editor: links/refs/tags render as they do when displayed, long
                     // lines wrap, Return makes a new bullet, and [[ / (( autocomplete at the caret
                     RichTextEditor(model: model, id: id, source: model.editText)
                         .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
+                    attachments
                 } else {
-                    // An edit-tap layer BEHIND the text, so tapping anywhere starts editing — while
-                    // links/refs in the text (in front) still take their own taps to navigate. A
-                    // Text swallows taps, so on a bullet WITHOUT links we turn off the text's hit
-                    // testing: otherwise a long, wrapped line (which fills the whole width, leaving no
-                    // bare area to hit the layer behind) can't be tapped to edit at all.
-                    let raw = node?.text ?? ""
-                    let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
-                    ZStack(alignment: .topLeading) {
+                    // An image-only bullet drops the empty text line above the picture (no blank line);
+                    // its caption line moves below the image as a tap target, so you can place the
+                    // cursor there and start a new line.
+                    if hasText || !hasFiles {
+                        textDisplay(raw, lineH)
+                    }
+                    attachments
+                    if hasFiles && !hasText {
                         Color.clear
+                            .frame(maxWidth: .infinity, minHeight: lineH)
                             .contentShape(Rectangle())
                             .onTapGesture { model.beginEdit(id) }
-                        Text(RichText.attributed(raw, doc: model.doc))
-                            .font(.rz(model.fontSize))
-                            .lineSpacing(model.lineSpacing)
-                            .strikethrough(isDone)
-                            .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
-                            .allowsHitTesting(hasLinks)
                     }
-                    .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading) // stay tappable when empty
                 }
-                attachments
             }
         }
+        .fullScreenCover(item: $viewer) { v in ImageViewer(url: v.url) }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button { model.toggleDone(id) } label: {
                 Label("Done", systemImage: "checkmark.circle")

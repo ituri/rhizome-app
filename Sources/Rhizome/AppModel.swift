@@ -597,6 +597,21 @@ final class AppModel {
         return URL(string: path, relativeTo: base)?.absoluteURL
     }
 
+    /// Remove one attachment from a node, syncing the shortened (or cleared) `files` list.
+    func removeFile(_ url: String, from id: String) {
+        guard var files = doc?.nodes[id]?.files else { return }
+        files.removeAll { $0.url == url }
+        doc?.nodes[id]?.files = files.isEmpty ? nil : files
+        if files.isEmpty {
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), unset: ["files"])])
+        } else {
+            let arr = JSONValue.array(files.map { f in
+                .object(["url": .string(f.url), "name": .string(f.name ?? ""), "type": .string(f.type ?? "")])
+            })
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["files": arr])])
+        }
+    }
+
     /// Upload image/file bytes and attach them to a node, syncing the new `files` list.
     func attachFile(_ data: Data, name: String, contentType: String, to id: String) async {
         guard let api, doc?.nodes[id] != nil else { return }
