@@ -339,10 +339,12 @@ final class AppModel {
         return createPage(title: title)
     }
 
-    /// Geo button: fetch the current position and splice it in as a `[[coords]]` page link at
-    /// the caret (find-or-create the coordinates page), so locations become linkable/queryable.
+    /// Geo button: fetch the current position and add it as a `[[coords]]` page link
+    /// (find-or-create the coordinates page). If we're still editing the same bullet when the
+    /// fix arrives, splice it at the caret; otherwise (the permission prompt can steal focus)
+    /// append it to that bullet's text directly and sync — so it never silently no-ops.
     func insertGeoLink() async {
-        guard editingID != nil, let insert = editorInsertToken, !locating else { return }
+        guard let id = editingID, !locating else { return }
         locating = true
         defer { locating = false }
         do {
@@ -350,10 +352,23 @@ final class AppModel {
             let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
             let pageID = findOrCreatePage(title: title)
             guard !pageID.isEmpty else { return }
-            insert(title, "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
+            let source = "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>"
+            if editingID == id, let insert = editorInsertToken {
+                insert(title, source)                 // still editing → renders inline at the caret
+            } else {
+                appendToNode(id, source: source)      // focus lost to the prompt → append + sync
+            }
         } catch {
             errorMessage = "Standort nicht verfügbar — Zugriff erlaubt?"
         }
+    }
+
+    /// Append a source fragment to a node's text (with a separating space) and sync it.
+    private func appendToNode(_ id: String, source: String) {
+        guard let cur = doc?.nodes[id]?.text else { return }
+        let next = cur + (cur.isEmpty || cur.hasSuffix(" ") ? "" : " ") + source
+        doc?.nodes[id]?.text = next
+        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(next)])])
     }
 
     private static func escapeHTML(_ s: String) -> String {
