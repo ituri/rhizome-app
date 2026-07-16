@@ -228,7 +228,8 @@ struct RichTextEditor: UIViewRepresentable {
         // .toolbar(.keyboard) doesn't attach to a UIKit first responder, so host it as the
         // text view's inputAccessoryView. Its SwiftUI content updates live with the model.
         let accessory = UIHostingController(rootView: KeyboardAccessory(model: model))
-        accessory.view.frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48)
+        // start with any width; the system stretches the accessory to the keyboard via .flexibleWidth
+        accessory.view.frame = CGRect(x: 0, y: 0, width: 393, height: 48)
         accessory.view.autoresizingMask = .flexibleWidth
         accessory.view.backgroundColor = .clear
         context.coordinator.accessory = accessory
