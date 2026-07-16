@@ -146,6 +146,12 @@ struct PageView: View {
             if let doc = model.doc, doc.nodes[pageID] != nil {
                 ScrollViewReader { proxy in
                     List {
+                        if let c = model.pageCoords(pageID) {   // a location page → map under the title
+                            GeoMapView(lat: c.lat, lon: c.lon)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.rzPaper)
+                        }
                         Section {
                             ForEach(visibleRows(doc, from: pageID)) { row in
                                 OutlineRow(id: row.id, node: doc.nodes[row.id])
