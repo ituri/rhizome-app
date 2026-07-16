@@ -71,7 +71,9 @@ struct OutlineRow: View {
                 .contentShape(Rectangle())
                 .onTapGesture { model.beginEdit(id) }
             Text(RichText.attributed(raw, doc: model.doc))
-                .font(.rz(model.fontSize))
+                // fixed size (matching the editor) unless the user opts into Dynamic Type scaling,
+                // so the line being edited stays the same size as the rest
+                .font(model.scaleWithSystem ? .rz(model.fontSize) : .rzFixed(model.fontSize))
                 .lineSpacing(model.lineSpacing)
                 .strikethrough(isDone)
                 .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)

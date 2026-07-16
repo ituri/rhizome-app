@@ -89,6 +89,12 @@ final class AppModel {
         didSet { UserDefaults.standard.set(appLock, forKey: "appLock"); if !appLock { locked = false } }
     }
 
+    /// Scale the outline text with the iOS system text size (Dynamic Type). Off keeps it fixed at
+    /// your chosen size, so the line you're editing stays the same size as the rest.
+    var scaleWithSystem: Bool {
+        didSet { UserDefaults.standard.set(scaleWithSystem, forKey: "scaleWithSystem") }
+    }
+
     /// Runtime lock state (not persisted): true while the app is waiting for biometric unlock.
     var locked = false
 
@@ -135,6 +141,7 @@ final class AppModel {
         imageScalePercent = UserDefaults.standard.object(forKey: "imageScalePercent") as? Double ?? 100
         haptics = UserDefaults.standard.object(forKey: "haptics") as? Bool ?? true
         appLock = UserDefaults.standard.object(forKey: "appLock") as? Bool ?? false
+        scaleWithSystem = UserDefaults.standard.object(forKey: "scaleWithSystem") as? Bool ?? false
         RichEditor.fontSize = CGFloat(fontSize)
         RichEditor.lineSpacing = CGFloat(lineSpacing)
         RZTheme.accent = accent

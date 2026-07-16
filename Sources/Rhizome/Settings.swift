@@ -31,6 +31,7 @@ struct SettingsView: View {
         @Bindable var model = model
         NavigationStack {
             Form {
+                // ---- Account ----
                 Section("Account") {
                     LabeledContent("User", value: model.user?.username ?? "—")
                     if model.user?.isAdmin == true {
@@ -39,7 +40,8 @@ struct SettingsView: View {
                     NavigationLink("Change password") { ChangePasswordView() }
                 }
 
-                Section("Server") {
+                // ---- Connection (server + graph) ----
+                Section {
                     TextField("Server URL", text: $model.serverURLString)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -47,16 +49,29 @@ struct SettingsView: View {
                     if let graph = model.activeGraph {
                         LabeledContent("Graph", value: graph.name)
                     }
-                }
-
-                Section {
-                    Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
+                    if model.graphs.count > 1 {
+                        ForEach(model.graphs) { graph in
+                            Button {
+                                Task { await model.selectGraph(graph.id); dismiss() }
+                            } label: {
+                                HStack {
+                                    Text(graph.name)
+                                    Spacer()
+                                    if graph.id == model.activeGraphID {
+                                        Image(systemName: "checkmark").foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .tint(.primary)
+                        }
+                    }
                 } header: {
-                    Text("Capture")
+                    Text("Connection")
                 } footer: {
-                    Text("New notes added with + are prefixed with the time, like the r command.")
+                    if model.graphs.count > 1 { Text("Tap a graph to switch to it.") }
                 }
 
+                // ---- Appearance ----
                 Section {
                     Picker("Theme", selection: $model.theme) {
                         ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
@@ -75,64 +90,57 @@ struct SettingsView: View {
                     Stepper(value: $model.lineSpacing, in: 0...14, step: 1) {
                         LabeledContent("Line spacing", value: String(format: "%.0f pt", model.lineSpacing))
                     }
+                    Toggle("Scale with system text size", isOn: $model.scaleWithSystem)
                     // live preview of size, spacing and accent (tag + link tones)
                     Text(RichText.attributed("The quick #brown fox jumps over the lazy dog.", doc: nil))
-                        .font(.rz(model.fontSize))
+                        .font(model.scaleWithSystem ? .rz(model.fontSize) : .rzFixed(model.fontSize))
                         .lineSpacing(model.lineSpacing)
                         .foregroundStyle(Color.rzInk)
                     Button("Reset to defaults", role: .destructive) { model.resetDesign() }
                 } header: {
-                    Text("Display")
+                    Text("Appearance")
                 } footer: {
-                    Text("Theme, accent, and the text size and spacing for outline bullets.")
+                    Text("With scaling off, text stays a fixed size so the line you're editing matches the rest.")
                 }
 
+                // ---- Editing behaviour ----
                 Section {
-                    TextField("Device name", text: $model.deviceName)
-                        .autocorrectionDisabled()
+                    Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
+                    Toggle("Haptic feedback", isOn: $model.haptics)
                 } header: {
-                    Text("Device")
+                    Text("Behaviour")
                 } footer: {
-                    Text("Shown in the web app's page history, so you can tell which device made a change.")
+                    Text("New notes added with + are prefixed with the time, like the r command.")
                 }
 
+                // ---- Uploads ----
                 Section {
                     Stepper(value: $model.imageScalePercent, in: 20...100, step: 10) {
                         LabeledContent("Image size", value: "\(Int(model.imageScalePercent)) %")
                     }
-                    Toggle("Haptic feedback", isOn: $model.haptics)
                 } header: {
-                    Text("Uploads & feedback")
+                    Text("Uploads")
                 } footer: {
                     Text("Downscale photos before upload to save space (100 % = full size).")
                 }
 
-                Section {
+                // ---- Security ----
+                Section("Security") {
                     Toggle("Require Face ID / Touch ID", isOn: $model.appLock)
+                }
+
+                // ---- This device ----
+                Section {
+                    TextField("Device name", text: $model.deviceName)
+                        .autocorrectionDisabled()
                 } header: {
-                    Text("Security")
+                    Text("This device")
+                } footer: {
+                    Text("Shown in the web app's page history, so you can tell which device made a change.")
                 }
 
-                if model.graphs.count > 1 {
-                    Section("Switch graph") {
-                        ForEach(model.graphs) { graph in
-                            Button {
-                                Task { await model.selectGraph(graph.id); dismiss() }
-                            } label: {
-                                HStack {
-                                    Text(graph.name)
-                                    Spacer()
-                                    if graph.id == model.activeGraphID {
-                                        Image(systemName: "checkmark").foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .tint(.primary)
-                        }
-                    }
-                }
-
-                Section("Sync") {
+                // ---- Sync & diagnostics ----
+                Section("Sync & diagnostics") {
                     LabeledContent("Status") {
                         switch model.syncState {
                         case .syncing: Text("Saving…").foregroundStyle(.secondary)
@@ -143,9 +151,6 @@ struct SettingsView: View {
                     Button("Reload from server") {
                         Task { await model.loadDoc(); dismiss() }
                     }
-                }
-
-                Section("Diagnostics") {
                     LabeledContent("Last sync") {
                         Text(model.lastSync).font(.caption).foregroundStyle(.secondary)
                     }
@@ -158,6 +163,7 @@ struct SettingsView: View {
                         .textSelection(.enabled)
                 }
 
+                // ---- Sign out ----
                 Section {
                     Button("Sign out", role: .destructive) {
                         Task { await model.signOut(); dismiss() }

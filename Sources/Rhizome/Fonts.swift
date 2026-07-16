@@ -11,8 +11,15 @@ enum Fonts {
 }
 
 extension Font {
-    /// Inter at a given size/weight (falls back to the system font if unavailable).
+    /// Inter at a given size/weight (falls back to the system font if unavailable). Scales with
+    /// the system text size (Dynamic Type).
     static func rz(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .custom("Inter", size: size).weight(weight)
+    }
+
+    /// Inter at a fixed size — does NOT scale with Dynamic Type, so it matches the (fixed-size)
+    /// UITextView editor exactly.
+    static func rzFixed(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        .custom("Inter", fixedSize: size).weight(weight)
     }
 }
