@@ -1,132 +1,151 @@
 # Rhizome iOS
 
-A **fully native** iPhone client for [Rhizome](https://rhizome.syslinx.org), built
-with **SwiftUI** and packaged with [**xtool**](https://github.com/xtool-org/xtool) —
-an Xcode-free, SwiftPM-based toolchain that builds and deploys iOS apps from
-Linux, Windows or macOS.
+A **fully native** iPhone client for [Rhizome](https://github.com/ituri/rhizome),
+a self-hosted, Roam-flavoured outliner. Built with **SwiftUI** and packaged with
+[**xtool**](https://github.com/xtool-org/xtool) — an Xcode-free, SwiftPM-based
+toolchain that builds and signs iOS apps from Linux, Windows or macOS.
 
-## What it is
+It talks to the Rhizome HTTP API directly — no web view, no embedded browser.
+Point it at your own Rhizome instance (the server URL is editable on the sign-in
+screen) and sign in with your account.
 
-A native SwiftUI app that talks to the Rhizome HTTP API directly — no web view,
-no embedded browser. Current state:
+> **Heads up:** this is a personal project, not an App Store release. You need
+> your own Rhizome server to sign in to, and you build the app yourself. It
+> targets **iOS 26** and runs on iPhone only.
 
-- **Native sign-in** (server URL + username/password → a Rhizome session cookie,
-  persisted so relaunches resume silently).
-- **Journal + Outline tabs.** *Journal* shows daily notes grouped by day (most
-  recent first, parsed from the calendar nodes); *Outline* shows the whole graph.
-- **Rich rendering** — Markdown (**bold**, *italic*, `code`, links) plus Rhizome
-  `[[page links]]`, `#tags` and `((block references))`, resolved and styled.
-- **Editing** — tap a row to edit inline; Return splits into a new sibling; `+`
-  adds a note (to today in Journal, to the page in Outline); swipe to complete or
-  delete; the keyboard bar indents / outdents; collapse + done persist. Edits post
-  Route-B ops to `/api/g/:id/ops` (optimistic, re-synced on failure).
-- A **Share Extension** for quick-capture into the Inbox (see below).
+## Features
 
-**Next:** live SSE sync, zoom/navigation into pages, richer text editing (multi-
-line), offline queueing. See the roadmap.
+- **Native sign-in** — server URL + username/password → a Rhizome session cookie,
+  persisted so relaunches resume silently; **offline resume** from the last
+  cached session and document.
+- **Four tabs + Settings** — *Journal* (daily notes grouped by day), *Pages* (all
+  pages with fuzzy search, last-edited times, rename-on-swipe, delete), *Assets*
+  (uploaded-file manager), *Search* (server-side full-text).
+- **Live sync** — subscribes to the graph's server-sent event stream and folds in
+  remote edits as they happen (except on the line you're actively editing).
+- **Rich inline editor** — Markdown (**bold**, *italic*, `code`, links) plus
+  Rhizome `[[page links]]`, `#tags` and `((block references))`, colour
+  **highlights**, checkbox **todos**, and inline **images**. Return splits into a
+  sibling, the keyboard bar indents/outdents, swipe to complete or delete.
+  Edits post ops to `/api/g/:id/ops` optimistically.
+- **Images & attachments** — upload from the camera or photo library, browse and
+  rename/delete everything in the Asset manager, clean up orphaned files, and
+  re-insert an existing upload into a note.
+- **Page history** — view past versions of a page, see a diff, and restore.
+- **Location** — attach your current coordinates to a note; addresses are
+  reverse-geocoded and shown on an OpenStreetMap map.
+- **Appearance & security** — light/dark theme, accent colour, font size and line
+  spacing, image-downscale percentage, Face ID / Touch ID lock, haptics, change
+  password, delete account. The *timestamp quick-capture* preference syncs across
+  your devices (web ⇄ iOS).
+- **Share Extension** — quick-capture text or a link from any app into today's
+  Inbox (see below).
+- **Privacy-friendly** — no analytics or tracking SDKs; your notes only ever go to
+  the server you sign in to. Ships a `PrivacyInfo.xcprivacy` manifest.
 
-The server URL is set on the sign-in screen (defaults to `Config.serverURL`).
+## Requirements
 
-## Prerequisites
-
-- A Swift 6.3 toolchain (`swift --version`).
-- xtool installed — see xtool's *Installation* guide for
-  [Linux](https://github.com/xtool-org/xtool/blob/main/Documentation/xtool.docc/Installation-Linux.md)
+- **An iPhone on iOS 26** (there's no iOS Simulator on Linux/Windows, so a real
+  device — or a Mac — is needed to actually run it). The app is iPhone-only.
+- **A Swift 6 toolchain** (`swift --version`). On Linux, [swiftly](https://www.swift.org/swiftly/)
+  is the easiest way to install one in user space.
+- **xtool** — follow its install guide for
+  [Linux](https://github.com/xtool-org/xtool/blob/main/Documentation/xtool.docc/Installation-Linux.md),
+  [Windows](https://github.com/xtool-org/xtool/blob/main/Documentation/xtool.docc/Installation-Windows.md)
   or [macOS](https://github.com/xtool-org/xtool/blob/main/Documentation/xtool.docc/Installation-macOS.md).
-- An Apple ID for signing (xtool handles the free 7-day personal-team signing;
+- **Xcode 26 `.xip`** from [Apple](https://developer.apple.com/download/all/?q=Xcode).
+  xtool extracts it once to build the iOS SDK — this is the only piece gated
+  behind an Apple ID and can't be scripted. (On macOS with Xcode installed, xtool
+  can use it directly.)
+- **An Apple ID for signing.** A free Apple ID gives 7-day personal-team signing;
   a paid Apple Developer account gives a 1-year profile and lets you ship via
-  TestFlight / the App Store).
-- **Xcode 26 `.xip`** downloaded from
-  [Apple](https://developer.apple.com/download/all/?q=Xcode) — xtool extracts it
-  to generate the iOS Swift SDK. This is the one piece Apple gates behind an
-  Apple ID; it can't be scripted.
-
-## Environment already set up on this Linux (Arch) box
-
-The toolchain is installed and on `PATH` (in fish, via `~/.config/fish/conf.d/swift.fish`):
-
-- **xtool 1.17** — AppImage at `~/.local/bin/xtool`.
-- **Swift 6.3.3** — installed with [swiftly](https://www.swift.org/swiftly/) in
-  user space (`swiftly install 6.3.3`, initialised with `--platform ubuntu24.04`
-  because Arch isn't auto-detected).
-- **libncurses shim** — Arch ships `libncursesw.so.6` but the Swift Ubuntu build
-  wants `libncurses.so.6`, so there's a symlink at
-  `…/swiftly/toolchains/6.3.3/usr/lib/swift/linux/libncurses.so.6 → /usr/lib/libncursesw.so.6`
-  (on the toolchain RUNPATH, so no global `LD_LIBRARY_PATH` is needed).
-  ⚠️ If you reinstall/upgrade the 6.3.3 toolchain, recreate this symlink.
-
-**Remaining, Apple-gated steps (need your Apple ID):** see *Build & run* below.
-To deploy onto a physical iPhone from Linux you also need `usbmuxd`
-(`sudo pacman -S usbmuxd`) and the phone plugged in + trusted — Linux has no iOS
-Simulator, so a real device (or a Mac) is required to actually run it.
+  TestFlight / the App Store.
+- **To deploy from Linux onto a device:** `usbmuxd` plus an iPhone that's plugged
+  in and trusted.
 
 ## Build & run
 
 ```sh
 xtool setup          # one-time: Apple ID auth + build the iOS SDK from your Xcode.xip
-cd ~/dev/rhizome-app
+cd rhizome-app
 xtool dev            # build, install and launch on a connected iPhone
 xtool build          # just produce a .ipa
 ```
 
-Project layout:
+For shipping to TestFlight, see [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
 
-```
-Package.swift                     SwiftPM manifest (app + Share Extension products)
-xtool.yml                         xtool manifest (bundle ID, icon, extensions)
-Icon.png                          1024×1024 app icon (rendered from the web sprout)
-RhizomeShare-Info.plist           Share Extension Info.plist (share-services)
-.sourcekit-lsp/config.json        LSP → iOS SDK, for editor support
-Sources/RhizomeKit/               shared by the app + extension
-  Config.swift                    default server URL, capture token, theme
-  Capture.swift                   POSTs a line to /api/capture (like the `r` command)
-  API.swift                       async HTTP client + wire models (login, me, doc)
-Sources/Rhizome/                  the app
-  RhizomeApp.swift                @main App entry point
-  AppModel.swift                  @Observable state: session, graphs, active doc
-  ContentView.swift               router: loading / sign-in / outline
-  SignInView.swift                native sign-in form
-  OutlineView.swift               native indented outline list
-Sources/RhizomeShare/             the Share Extension
-  ShareViewController.swift       compose sheet → quick-capture into the Inbox
-```
+## Configure it for your own instance
+
+1. **Server URL** — set it once on the sign-in screen, or change the default in
+   `Sources/RhizomeKit/Config.swift` (`Config.serverURL`).
+2. **Bundle ID** — change `bundleID` in `xtool.yml` (and the extension's) from
+   `org.syslinx.rhizome` to something under your own domain.
+3. **Share Extension token** — see below.
+
+### Linux notes
+
+- xtool needs a working Swift toolchain on `PATH`; swiftly-installed toolchains
+  work well. If your distro isn't auto-detected, install with an explicit
+  `--platform` (e.g. `swiftly install <version> --platform ubuntu24.04`).
+- **Arch:** the Swift Ubuntu build looks for `libncurses.so.6`, but Arch ships
+  `libncursesw.so.6`. Symlink it into the toolchain's `usr/lib/swift/linux/`
+  directory if the toolchain fails to load `libncurses`.
 
 ## Native quick-capture (Share Extension)
 
 Share text or a link from any app → **Rhizome Inbox** and it lands under today's
-journal (time-stamped, exactly like the `r` shell command). To enable it, put a
-**write-scoped `rzk_…` API key** (create one in the web app under *Account → API
-keys*) into `Sources/RhizomeKit/Secrets.swift`:
+journal, time-stamped like the `r` shell command. To enable it, create a
+**write-scoped `rzk_…` API key** in the web app (*Account → API keys*) and put it
+in `Sources/RhizomeKit/Secrets.swift`:
 
 ```swift
 static let captureToken = "rzk_…"
 ```
 
-`Secrets.swift` is committed empty and kept out of version control locally with:
+`Secrets.swift` is committed empty; keep your key out of git locally with:
 
 ```sh
 git update-index --skip-worktree Sources/RhizomeKit/Secrets.swift
 ```
 
-so your key stays on your machine (undo with `--no-skip-worktree`). Rebuild after
-editing. Until a key is set, the extension's *Post* button stays disabled. (The
-key is compiled in for now; a Settings screen + a shared App Group is the planned
-hardening — see the roadmap.)
+(undo with `--no-skip-worktree`). Until a key is set, the extension's *Post*
+button stays disabled. Rebuild after editing.
+
+## Project layout
+
+```
+Package.swift                     SwiftPM manifest (app + Share Extension)
+xtool.yml                         xtool manifest (bundle ID, icon, extension)
+Info.plist                        app Info.plist (permission strings, iPhone-only)
+Icon.png                          1024×1024 app icon
+docs/TESTFLIGHT.md                guide for shipping to TestFlight
+
+Sources/RhizomeKit/               shared by the app + the Share Extension
+  API.swift                       async HTTP client + wire models
+  Config.swift                    default server URL, accent, capture token
+  Capture.swift                   POSTs a line to /api/capture (like `r`)
+  Secrets.swift                   the capture API key (git-skipped)
+  Ops.swift  RichText.swift  Journal.swift  Highlight.swift  Accent.swift
+
+Sources/Rhizome/                  the app
+  RhizomeApp.swift                @main entry point
+  AppModel.swift                  @Observable state: session, sync, ops, settings
+  ContentView.swift               tab router + Face ID lock overlay
+  SignInView.swift                native sign-in
+  JournalView / Pages / AssetsView / SearchView / Settings
+  OutlineView.swift  RichEditor.swift  Toolbars.swift   outline + editing
+  PageHistory.swift  References.swift  Navigation.swift
+  GeoMap.swift  Location.swift    coordinates + OpenStreetMap
+  Attachments.swift  Haptics.swift  Fonts.swift  Theme.swift  LocalStore.swift
+
+Sources/RhizomeShare/
+  ShareViewController.swift       compose sheet → quick-capture into the Inbox
+```
 
 ## Roadmap
 
-- **Editing** — inline text editing and structural ops (enter / tab+shift-tab /
-  move / delete / toggle-done) posted to `/api/g/:id/ops`, with an on-device undo.
-- **Live sync** — subscribe to `/api/g/:id/events` (SSE) so remote edits stream in.
-- **Rich rendering** — `[[links]]`, `#tags`, `((block refs))`, attributes and
-  Markdown styling in the native rows (tappable links / zoom).
-- **Offline** — cache the doc + queue ops locally, replay on reconnect.
-- **Move the capture token out of source** — a Settings screen that stores the
-  key, shared to the extension via an App Group / Keychain (App Groups on device
-  need a paid team).
-- **Home-screen widget / Shortcut** for one-tap capture.
-- **Push notifications** (needs a paid Apple Developer account).
-
-*Done: native sign-in, native read-only outline, app icon, Share-Extension quick-capture.*
-
-*Done: native SwiftUI web shell, app icon, Share-Extension quick-capture.*
+- Move the capture token out of source into a Settings screen, shared to the
+  extension via an App Group / Keychain (App Groups on device need a paid team).
+- Home-screen widget / App Shortcut for one-tap capture.
+- Push notifications (needs a paid Apple Developer account).
+- An iPad-optimised layout (the app is iPhone-only for now).
