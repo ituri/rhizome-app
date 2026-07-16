@@ -390,7 +390,7 @@ final class AppModel {
     /// bullet you started from (find-or-create the coordinates page). Appending — rather than a
     /// caret splice — means it works whether or not the editor kept focus during the fetch.
     func insertGeoLink() async {
-        guard !locating else { return }
+        guard !locating else { geoMessage = "Läuft schon (locating=true)"; return }
         guard let id = editingID else { geoMessage = "Nicht im Editiermodus (editingID = nil)"; return }
         locationProvider.start()
         // use the warm fix if we have one; otherwise poll briefly (bounded — never hangs)

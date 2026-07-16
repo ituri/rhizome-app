@@ -3,16 +3,17 @@ import RhizomeKit
 
 extension View {
     /// A small status/diagnostic alert for the geo button (permission, no fix, success, …).
+    /// `presenting: model.geoMessage` is read here in the body so the view tracks the
+    /// @Observable change and the alert actually appears.
     @MainActor
     func geoAlert(_ model: AppModel) -> some View {
-        alert("Standort", isPresented: Binding(
-            get: { model.geoMessage != nil },
-            set: { if !$0 { model.geoMessage = nil } }
-        )) {
+        alert(
+            "Standort",
+            isPresented: Binding(get: { model.geoMessage != nil }, set: { if !$0 { model.geoMessage = nil } }),
+            presenting: model.geoMessage
+        ) { _ in
             Button("OK", role: .cancel) { model.geoMessage = nil }
-        } message: {
-            Text(model.geoMessage ?? "")
-        }
+        } message: { Text($0) }
     }
 
     /// Intercept taps on internal `rhizome://n/<id>` links and push the target
