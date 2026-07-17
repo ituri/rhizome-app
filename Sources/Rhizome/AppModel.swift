@@ -17,6 +17,15 @@ struct LinkSuggestion: Identifiable, Hashable {
     let isCreate: Bool
 }
 
+/// One entry in the `/` slash command menu (block types + quick actions), mirroring the
+/// desktop's caret slash popup.
+struct SlashCommand: Identifiable {
+    let id: String              // stable key, also used for matching
+    let label: String
+    let icon: String           // SF Symbol
+    let run: @MainActor () -> Void
+}
+
 /// Observable app state: server URL, the signed-in user, their graphs, and the
 /// currently loaded outline. The session lives in URLSession's cookie storage, so
 /// `bootstrap()` can silently resume a previous login.
@@ -288,6 +297,7 @@ final class AppModel {
     var editText = ""                 // live buffer for the row being edited
     var linkSuggestions: [LinkSuggestion] = []   // active [[ / (( autocomplete matches
     var linkSuggestKind: LinkKind?
+    var slashCommands: [SlashCommand] = []       // active `/` slash-menu matches
     var locating = false                          // geo button is waiting for a fix
     var geoMessage: String?                       // transient status/diagnostic shown after a geo tap
     @ObservationIgnored private let locationProvider = LocationProvider()
@@ -311,6 +321,10 @@ final class AppModel {
     // Apply a highlight colour name ("" = clear) to the editor's current selection.
     @ObservationIgnored var editorHighlight: (@MainActor (String) -> Void)?
     func registerEditorHighlight(_ f: @MainActor @escaping (String) -> Void) { editorHighlight = f }
+
+    // Delete the open `/query` at the caret before a slash command runs.
+    @ObservationIgnored var editorDeleteSlash: (@MainActor () -> Void)?
+    func registerEditorDeleteSlash(_ f: @MainActor @escaping () -> Void) { editorDeleteSlash = f }
 
     /// The editor produced a new source string for the current row → buffer + debounce-sync.
     func onEditorText(_ source: String) {
@@ -418,22 +432,70 @@ final class AppModel {
     func clearLinkSuggestions() {
         if !linkSuggestions.isEmpty { linkSuggestions = [] }
         linkSuggestKind = nil
+        if !slashCommands.isEmpty { slashCommands = [] }
     }
 
     /// Recompute the autocomplete list from the plain text before the real caret (the editor
     /// passes it in). Looks for the last unclosed `[[` (pages) or `((` (blocks); the text after
     /// it is the live query.
     func updateSuggestions(before: String) {
-        guard editingID != nil else { clearLinkSuggestions(); return }
+        guard let id = editingID else { clearLinkSuggestions(); return }
         if let q = tailQuery(before, open: "[[", closeChar: "]") {
+            clearSlashOnly()
             linkSuggestKind = .page
             linkSuggestions = pageSuggestions(q)
         } else if let q = tailQuery(before, open: "((", closeChar: ")") {
+            clearSlashOnly()
             linkSuggestKind = .block
             linkSuggestions = blockSuggestions(q)
+        } else if let q = slashTail(before) {
+            if !linkSuggestions.isEmpty { linkSuggestions = []; linkSuggestKind = nil }
+            slashCommands = matchingSlashCommands(id, query: q)
         } else {
             clearLinkSuggestions()
         }
+    }
+
+    private func clearSlashOnly() { if !slashCommands.isEmpty { slashCommands = [] } }
+
+    /// The query after a `/` that starts a word (line start or after whitespace) with no space
+    /// after it — the slash-menu trigger. Returns nil for e.g. `http://` or `and/or`.
+    private func slashTail(_ text: String) -> String? {
+        guard let r = text.range(of: "/", options: .backwards) else { return nil }
+        if let prev = text[..<r.lowerBound].last, !prev.isWhitespace { return nil }
+        let tail = text[r.upperBound...]
+        if tail.contains(where: { $0.isWhitespace }) { return nil }
+        return String(tail)
+    }
+
+    /// The full slash-command set for `id`, filtered by `query` (case-insensitive substring).
+    private func matchingSlashCommands(_ id: String, query: String) -> [SlashCommand] {
+        let q = query.lowercased()
+        let fmt: (String, String, String, String?) -> SlashCommand = { key, label, icon, value in
+            SlashCommand(id: key, label: label, icon: icon) { [weak self] in self?.setFormat(id, value) }
+        }
+        let all: [SlashCommand] = [
+            fmt("h1", "Heading 1", "textformat.size.larger", "h1"),
+            fmt("h2", "Heading 2", "textformat.size", "h2"),
+            fmt("h3", "Heading 3", "textformat.size.smaller", "h3"),
+            fmt("todo", "To-do", "checkmark.square", "todo"),
+            fmt("quote", "Quote", "text.quote", "quote"),
+            fmt("code", "Code block", "curlybraces", "codeblock"),
+            fmt("divider", "Divider", "minus", "divider"),
+            fmt("bullet", "Bullet (reset)", "circle.fill", nil),
+            SlashCommand(id: "done", label: "Complete", icon: "checkmark.circle") { [weak self] in self?.toggleDone(id) },
+            SlashCommand(id: "duplicate", label: "Duplicate", icon: "plus.square.on.square") { [weak self] in self?.duplicate(id) },
+            SlashCommand(id: "copylink", label: "Copy link", icon: "link") { [weak self] in self?.copyNodeLink(id) },
+            SlashCommand(id: "delete", label: "Delete", icon: "trash") { [weak self] in self?.delete(id) },
+        ]
+        return q.isEmpty ? all : all.filter { $0.label.lowercased().contains(q) || $0.id.contains(q) }
+    }
+
+    /// A slash command was chosen → delete the typed `/query`, then run it.
+    func runSlashCommand(_ cmd: SlashCommand) {
+        editorDeleteSlash?()
+        cmd.run()
+        clearLinkSuggestions()
     }
 
     /// The query after the last `open` marker, or nil if that marker is already closed
@@ -770,6 +832,47 @@ final class AppModel {
             doc?.nodes[id]?.format = "todo"
             send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["format": .string("todo")])])
         }
+    }
+
+    /// Set (or, with nil, clear) a node's block format — the slash menu's block types
+    /// (h1/h2/h3/quote/codeblock/divider/todo), matching the web `opSetFormat`.
+    func setFormat(_ id: String, _ fmt: String?) {
+        flushCurrent()
+        guard doc?.nodes[id] != nil else { return }
+        // toggle off if the same format is chosen again (like the desktop)
+        let value = (fmt != nil && doc?.nodes[id]?.format == fmt) ? nil : fmt
+        doc?.nodes[id]?.format = value
+        if let value {
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["format": .string(value)])])
+        } else {
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), unset: ["format"])])
+        }
+    }
+
+    /// Duplicate a bullet as the next sibling (text + format + done; no children), like the
+    /// desktop's Duplicate.
+    func duplicate(_ id: String) {
+        flushCurrent()
+        guard let node = doc?.nodes[id], let parent = parentMap[id],
+              let idx = doc?.nodes[parent]?.children?.firstIndex(of: id) else { return }
+        let newID = clock.newID()
+        var copy = RNode(text: node.text, children: [])
+        copy.format = node.format
+        copy.done = node.done
+        doc?.nodes[newID] = copy
+        doc?.nodes[parent]?.children?.insert(newID, at: idx + 1)
+        parentMap[newID] = parent
+        var data: [String: JSONValue] = ["text": .string(node.text ?? "")]
+        if let f = node.format { data["format"] = .string(f) }
+        if node.done == true { data["done"] = .bool(true) }
+        send([Op(kind: "insert", node: newID, hlc: clock.stamp(), parent: parent, ord: idx + 1, data: data)])
+    }
+
+    /// Copy a web deep-link to this bullet (`<server>/#/n/<id>`) to the clipboard.
+    func copyNodeLink(_ id: String) {
+        let base = serverURLString.trimmingCharacters(in: .whitespaces)
+        UIPasteboard.general.string = base.isEmpty ? "#/n/\(id)" : "\(base)/#/n/\(id)"
+        Haptics.success()
     }
 
     /// Absolute URL of an uploaded `/files/…` attachment (loaded with the shared session cookie).

@@ -62,25 +62,53 @@ struct OutlineRow: View {
         }
     }
 
-    /// The bullet's text — a tap-to-edit layer behind the rendered text (links stay tappable).
+    /// The bullet's text — a tap-to-edit layer behind the rendered text (links stay tappable),
+    /// styled by the node's block format (headings / quote / code; divider draws a rule).
     @ViewBuilder
     private func textDisplay(_ raw: String, _ lineH: CGFloat) -> some View {
-        let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
-            || raw.contains("http://") || raw.contains("https://") || raw.contains("www.")   // bare URLs are tappable too
-        ZStack(alignment: .topLeading) {
-            Color.clear
+        let fmt = node?.format
+        if fmt == "divider" {
+            Rectangle().fill(Color.rzLine)
+                .frame(maxWidth: .infinity, maxHeight: 1)
+                .frame(minHeight: lineH, alignment: .center)
                 .contentShape(Rectangle())
                 .onTapGesture { model.beginEdit(id) }
-            Text(RichText.attributed(raw, doc: model.doc))
-                // fixed size (matching the editor) unless the user opts into Dynamic Type scaling,
-                // so the line being edited stays the same size as the rest
-                .font(model.scaleWithSystem ? .rz(model.fontSize) : .rzFixed(model.fontSize))
-                .lineSpacing(model.lineSpacing)
-                .strikethrough(isDone)
-                .foregroundStyle(isDone ? Color.rzDone : Color.rzInk)
-                .allowsHitTesting(hasLinks)
+        } else {
+            let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
+                || raw.contains("http://") || raw.contains("https://") || raw.contains("www.")   // bare URLs are tappable too
+            let size: Double = fmt == "h1" ? model.fontSize * 1.55
+                : fmt == "h2" ? model.fontSize * 1.3
+                : fmt == "h3" ? model.fontSize * 1.12
+                : model.fontSize
+            let isQuote = fmt == "quote", isCode = fmt == "codeblock"
+            let isHeading = fmt == "h1" || fmt == "h2" || fmt == "h3"
+            ZStack(alignment: .topLeading) {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.beginEdit(id) }
+                HStack(spacing: 8) {
+                    if isQuote {
+                        Rectangle().fill(Color.rzAccent.opacity(0.4)).frame(width: 3)
+                            .allowsHitTesting(false)
+                    }
+                    Text(RichText.attributed(raw, doc: model.doc))
+                        // fixed size (matching the editor) unless the user opts into Dynamic Type
+                        .font(isCode ? .system(size: model.fontSize, design: .monospaced)
+                              : (model.scaleWithSystem ? .rz(size) : .rzFixed(size)))
+                        .fontWeight(isHeading ? .bold : .regular)
+                        .italic(isQuote)
+                        .lineSpacing(model.lineSpacing)
+                        .strikethrough(isDone)
+                        .foregroundStyle(isDone ? Color.rzDone : (isQuote ? Color.rzInkSoft : Color.rzInk))
+                        .allowsHitTesting(hasLinks)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(isCode ? 6 : 0)
+                        .background(isCode ? Color.rzInkFaint.opacity(0.1) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 6))
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)   // stay tappable when empty
         }
-        .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)   // stay tappable when empty
     }
 
     var body: some View {
@@ -233,7 +261,25 @@ struct KeyboardAccessory: View {
 
     private var bar: some View {
         HStack(spacing: 14) {
-            if !model.linkSuggestions.isEmpty {
+            if !model.slashCommands.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(model.slashCommands) { c in
+                            Button { model.runSlashCommand(c) } label: {
+                                Label(c.label, systemImage: c.icon)
+                                    .lineLimit(1)
+                                    .font(.rz(15))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.rzAccent.opacity(0.12), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.rzAccent)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+            } else if !model.linkSuggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(model.linkSuggestions) { s in

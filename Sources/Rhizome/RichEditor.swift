@@ -257,6 +257,7 @@ struct RichTextEditor: UIViewRepresentable {
         model.registerEditorReload { [weak coord = context.coordinator] in coord?.reloadFromModel() }
         model.registerEditorResign { [weak tv] in _ = tv?.resignFirstResponder() }
         model.registerEditorHighlight { [weak coord = context.coordinator] name in coord?.applyHighlight(name) }
+        model.registerEditorDeleteSlash { [weak coord = context.coordinator] in coord?.deleteSlashQuery() }
         return tv
         // NB: the keyboard bar lives as a SwiftUI .safeAreaInset(KeyboardAccessory) in the views
         // now — a UIHostingController hosted as inputAccessoryView didn't receive button taps.
@@ -395,6 +396,22 @@ struct RichTextEditor: UIViewRepresentable {
             tv.attributedText = m
             tv.selectedRange = NSRange(location: r.location + token.length, length: 0)
             tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink] // keep typing plain after the token
+            textViewDidChange(tv)
+        }
+
+        /// Delete the open `/query` at the caret (before running a slash command).
+        func deleteSlashQuery() {
+            guard let tv = textView else { return }
+            let ns = tv.attributedText.string as NSString
+            let caret = min(tv.selectedRange.location, ns.length)
+            let before = ns.substring(to: caret) as NSString
+            let r = before.range(of: "/", options: .backwards)
+            guard r.location != NSNotFound else { return }
+            let m = NSMutableAttributedString(attributedString: tv.attributedText)
+            m.deleteCharacters(in: NSRange(location: r.location, length: caret - r.location))
+            tv.attributedText = m
+            tv.selectedRange = NSRange(location: r.location, length: 0)
+            tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
             textViewDidChange(tv)
         }
 
