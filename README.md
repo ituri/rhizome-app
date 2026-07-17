@@ -79,8 +79,9 @@ For shipping to TestFlight, see [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
 
 ## Configure it for your own instance
 
-1. **Server URL** — type your Rhizome instance's URL on the sign-in screen. There
-   is no hard-coded default.
+1. **Server URL** — the sign-in screen is prefilled with `https://rhizome.syslinx.org`
+   (editable). To default a build to your own instance, change the fallback in
+   `AppModel.init` (`serverURLString = saved ?? "…"`).
 2. **Bundle ID** — change `bundleID` in `xtool.yml` from `org.syslinx.rhizome` to
    something under your own domain.
 3. **Share extension** (optional) — set an API key + server URL in `Secrets.swift`

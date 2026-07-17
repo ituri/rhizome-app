@@ -150,7 +150,7 @@ final class AppModel {
 
     init() {
         let saved = UserDefaults.standard.string(forKey: "serverURL")
-        serverURLString = saved ?? ""   // no default instance — entered on the sign-in screen
+        serverURLString = saved ?? "https://rhizome.syslinx.org"   // prefilled; editable on the sign-in screen
         activeGraphID = UserDefaults.standard.string(forKey: "activeGraphID")
         captureTimestamp = UserDefaults.standard.object(forKey: "captureTimestamp") as? Bool ?? true
         deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? UIDevice.current.name
