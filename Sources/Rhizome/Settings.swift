@@ -165,6 +165,10 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(model.selfTestResult.hasPrefix("✗") ? .orange : .secondary)
                         .textSelection(.enabled)
+                    LabeledContent("App Group") {
+                        Text("defaults=\(AppGroup.defaults != nil) · url=\(AppGroup.serverURL != nil) · cookie=\(AppGroup.sessionCookie != nil)")
+                            .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
                     LabeledContent("Last share") {
                         Text(AppGroup.shareLog ?? "—")
                             .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
