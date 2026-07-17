@@ -51,6 +51,24 @@ jobs:
           echo "Using workspace=$WORKSPACE scheme=${PRODUCT}-App"
           xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null || true
 
+      # xtool doesn't wire iconPath into the generated project, so the archive ships without
+      # an asset-catalog app icon (App Store requires CFBundleIconName + a 120x120 icon).
+      # Attach the committed Assets.xcassets (AppIcon) to the app target here.
+      - name: Add app icon asset catalog
+        run: |
+          gem install xcodeproj --no-document --quiet
+          PROJ=$(ls -d xtool/.xtool-tmp/*.xcodeproj | head -1)
+          ruby -e '
+            require "xcodeproj"
+            proj = Xcodeproj::Project.open(ARGV[0])
+            target = proj.targets.find { |t| t.name == ARGV[1] } or abort "target #{ARGV[1]} not found"
+            ref = proj.main_group.new_file(File.join(Dir.pwd, "Assets.xcassets"))
+            target.resources_build_phase.add_file_reference(ref, true)
+            target.build_configurations.each { |c| c.build_settings["ASSETCATALOG_COMPILER_APPICON_NAME"] = "AppIcon" }
+            proj.save
+            puts "attached Assets.xcassets to #{target.name}"
+          ' "$PROJ" "$SCHEME"
+
       - name: Compute version
         id: ver
         run: |
