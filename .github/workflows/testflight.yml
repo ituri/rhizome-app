@@ -87,16 +87,20 @@ jobs:
           mkdir -p ~/.appstoreconnect/private_keys
           cp "$RUNNER_TEMP/asc.p8" ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
 
-      # Archive unsigned — signing the embedded extension at archive time is flaky with
-      # automatic signing on CI. The export step re-signs the whole bundle (app + appex)
-      # in one coordinated pass.
+      # Archive WITH automatic (cloud) signing so each target's CODE_SIGN_ENTITLEMENTS — notably
+      # the App Group — is baked into the signed binaries. An unsigned archive + sign-on-export
+      # dropped the App Group entitlement (the extension then couldn't reach the shared container).
       - name: Archive
         run: |
           xcodebuild archive \
             -workspace "$WORKSPACE" -scheme "$SCHEME" \
             -configuration Release -destination 'generic/platform=iOS' \
             -archivePath build/Rhizome.xcarchive \
-            CODE_SIGNING_ALLOWED=NO \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
+            CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             MARKETING_VERSION="${{ steps.ver.outputs.marketing }}" \
             CURRENT_PROJECT_VERSION="${{ steps.ver.outputs.build }}"
