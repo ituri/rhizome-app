@@ -1,37 +1,32 @@
 name: TestFlight
 
 # Builds the app on a macOS runner and uploads it to TestFlight.
-# Trigger: push a version tag (e.g. `git tag v1.0.3 && git push --tags`) or run manually.
+# Trigger: push a version tag (e.g. `git tag v1.0.0 && git push --tags`) or run manually.
 #
-# One-time setup (see docs/TESTFLIGHT.md) — add these repo secrets:
-#   DIST_CERT_P12_BASE64        Apple Distribution cert + private key, exported as .p12, base64
-#   DIST_CERT_PASSWORD          password for that .p12
-#   APP_PROVISION_PROFILE_BASE64  App Store profile for org.syslinx.rhizome (.mobileprovision, base64)
-#   EXT_PROVISION_PROFILE_BASE64  App Store profile for org.syslinx.rhizome.Share (.mobileprovision, base64)
-#   APP_PROFILE_NAME           the exact name of the app profile (as shown in the portal)
-#   EXT_PROFILE_NAME           the exact name of the extension profile
-#   APPLE_TEAM_ID              your 10-char Team ID
-#   ASC_KEY_ID                 App Store Connect API key ID
-#   ASC_ISSUER_ID              App Store Connect API issuer ID
-#   ASC_KEY_P8_BASE64          the App Store Connect API key (.p8), base64
+# Signing is fully automatic (Xcode "cloud" signing) via an App Store Connect API key —
+# no distribution certificate or provisioning profiles to create/export by hand.
+#
+# One-time setup (see docs/TESTFLIGHT.md) — add these four repo secrets:
+#   APPLE_TEAM_ID        your 10-char Team ID (portal → Membership)
+#   ASC_KEY_ID           App Store Connect API key ID
+#   ASC_ISSUER_ID        App Store Connect API issuer ID
+#   ASC_KEY_P8_BASE64    the API key (.p8) file, base64  (`base64 -w0 AuthKey_XXXX.p8`)
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: "Marketing version (e.g. 1.0.0)"
+        default: "1.0.0"
 
 jobs:
   testflight:
-    runs-on: macos-15
-    env:
-      PROJECT: Rhizome.xcodeproj
-      SCHEME: Rhizome
-      APP_BUNDLE_ID: org.syslinx.rhizome
-      EXT_BUNDLE_ID: org.syslinx.rhizome.Share
+    runs-on: macos-26        # ships Xcode 26 / the iOS 26 SDK the app targets
     steps:
       - uses: actions/checkout@v4
 
-      # The app targets the iOS 26 SDK — pick the newest Xcode the runner has.
       - name: Select newest Xcode
         run: |
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
@@ -40,22 +35,36 @@ jobs:
       - name: Install xtool
         run: brew install xtool-org/tap/xtool
 
-      # Turn the SwiftPM package into an Xcode project we can archive.
+      # Turn the SwiftPM package (library products) into an archivable Xcode project.
       - name: Generate Xcode project
         run: xtool dev generate-xcode-project
 
-      - name: Import signing certificate
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.DIST_CERT_P12_BASE64 }}
-          p12-password: ${{ secrets.DIST_CERT_PASSWORD }}
-
-      - name: Install provisioning profiles
+      - name: Discover project & scheme
         run: |
-          DIR=~/Library/MobileDevice/Provisioning\ Profiles
-          mkdir -p "$DIR"
-          echo "${{ secrets.APP_PROVISION_PROFILE_BASE64 }}" | base64 --decode > "$DIR/app.mobileprovision"
-          echo "${{ secrets.EXT_PROVISION_PROFILE_BASE64 }}" | base64 --decode > "$DIR/ext.mobileprovision"
+          PROJECT=$(ls -d *.xcodeproj | head -1)
+          SCHEME=$(xcodebuild -list -project "$PROJECT" -json \
+            | python3 -c 'import json,sys; s=json.load(sys.stdin)["project"]["schemes"]; print("Rhizome" if "Rhizome" in s else s[0])')
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "SCHEME=$SCHEME"   >> "$GITHUB_ENV"
+          echo "Using project=$PROJECT scheme=$SCHEME"
+
+      - name: Compute version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            MARKETING="${GITHUB_REF_NAME#v}"
+          else
+            MARKETING="${{ github.event.inputs.marketing_version }}"
+          fi
+          echo "marketing=$MARKETING"     >> "$GITHUB_OUTPUT"
+          echo "build=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "version $MARKETING ($GITHUB_RUN_NUMBER)"
+
+      - name: Write App Store Connect API key
+        run: |
+          echo "${{ secrets.ASC_KEY_P8_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/asc.p8"
+          mkdir -p ~/.appstoreconnect/private_keys
+          cp "$RUNNER_TEMP/asc.p8" ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
 
       - name: Archive
         run: |
@@ -63,12 +72,14 @@ jobs:
             -project "$PROJECT" -scheme "$SCHEME" \
             -configuration Release -destination 'generic/platform=iOS' \
             -archivePath build/Rhizome.xcarchive \
-            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
-            | xcpretty || xcodebuild archive \
-            -project "$PROJECT" -scheme "$SCHEME" \
-            -configuration Release -destination 'generic/platform=iOS' \
-            -archivePath build/Rhizome.xcarchive \
-            CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}"
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            MARKETING_VERSION="${{ steps.ver.outputs.marketing }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.ver.outputs.build }}"
 
       - name: Write export options
         run: |
@@ -78,11 +89,7 @@ jobs:
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
             <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
-            <key>signingStyle</key><string>manual</string>
-            <key>provisioningProfiles</key><dict>
-              <key>${APP_BUNDLE_ID}</key><string>${{ secrets.APP_PROFILE_NAME }}</string>
-              <key>${EXT_BUNDLE_ID}</key><string>${{ secrets.EXT_PROFILE_NAME }}</string>
-            </dict>
+            <key>signingStyle</key><string>automatic</string>
             <key>uploadSymbols</key><true/>
           </dict></plist>
           PLIST
@@ -92,14 +99,23 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath build/Rhizome.xcarchive \
             -exportPath build/export \
-            -exportOptionsPlist ExportOptions.plist
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
 
       - name: Upload to TestFlight
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "${{ secrets.ASC_KEY_P8_BASE64 }}" | base64 --decode \
-            > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
           xcrun altool --upload-app -t ios \
             -f "$(ls build/export/*.ipa | head -1)" \
             --apiKey "${{ secrets.ASC_KEY_ID }}" \
             --apiIssuer "${{ secrets.ASC_ISSUER_ID }}"
+
+      - name: Save IPA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rhizome-ipa
+          path: build/export/*.ipa
+          if-no-files-found: ignore
