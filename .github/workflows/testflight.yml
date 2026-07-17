@@ -39,14 +39,16 @@ jobs:
       - name: Generate Xcode project
         run: xtool dev generate-xcode-project
 
-      - name: Discover project & scheme
+      # xtool writes an .xcworkspace under xtool/ (the project lives in xtool/.xtool-tmp/);
+      # the scheme is the product name from xtool.yml.
+      - name: Locate workspace & scheme
         run: |
-          PROJECT=$(ls -d *.xcodeproj | head -1)
-          SCHEME=$(xcodebuild -list -project "$PROJECT" -json \
-            | python3 -c 'import json,sys; s=json.load(sys.stdin)["project"]["schemes"]; print("Rhizome" if "Rhizome" in s else s[0])')
-          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
-          echo "SCHEME=$SCHEME"   >> "$GITHUB_ENV"
-          echo "Using project=$PROJECT scheme=$SCHEME"
+          WORKSPACE=$(ls -d xtool/*.xcworkspace | head -1)
+          SCHEME=$(grep -E '^product:' xtool.yml | awk '{print $2}')
+          echo "WORKSPACE=$WORKSPACE" >> "$GITHUB_ENV"
+          echo "SCHEME=$SCHEME"       >> "$GITHUB_ENV"
+          echo "Using workspace=$WORKSPACE scheme=$SCHEME"
+          ls -la xtool
 
       - name: Compute version
         id: ver
@@ -69,7 +71,7 @@ jobs:
       - name: Archive
         run: |
           xcodebuild archive \
-            -project "$PROJECT" -scheme "$SCHEME" \
+            -workspace "$WORKSPACE" -scheme "$SCHEME" \
             -configuration Release -destination 'generic/platform=iOS' \
             -archivePath build/Rhizome.xcarchive \
             -allowProvisioningUpdates \
