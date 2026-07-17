@@ -92,7 +92,7 @@ struct OutlineRow: View {
                         Rectangle().fill(Color.rzAccent.opacity(0.4)).frame(width: 3)
                             .allowsHitTesting(false)
                     }
-                    Text(RichText.attributed(raw, doc: model.doc))
+                    Text(RichText.attributed(raw, doc: model.doc, size: size))
                         // fixed size (matching the editor) unless the user opts into Dynamic Type
                         .font(isCode ? .system(size: model.fontSize, design: .monospaced)
                               : (model.scaleWithSystem ? .rz(size) : .rzFixed(size)))

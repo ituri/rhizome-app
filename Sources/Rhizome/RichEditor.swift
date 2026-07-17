@@ -41,12 +41,18 @@ enum RichEditor {
     }
 
     static func font(_ fmt: String = "") -> UIFont {
+        // Inter (the bundled face) has no italic, so for italic we use the system font, which
+        // does — matching how the outline display renders it. Bold/code stay on Inter/Menlo.
+        if fmt.contains("i") {
+            var traits: UIFontDescriptor.SymbolicTraits = .traitItalic
+            if fmt.contains("b") { traits.insert(.traitBold) }
+            let base = UIFont.systemFont(ofSize: fontSize)
+            if let d = base.fontDescriptor.withSymbolicTraits(traits) { return UIFont(descriptor: d, size: fontSize) }
+            return base
+        }
         let name = fmt.contains("c") ? "Menlo" : "Inter"
         var f = UIFont(name: name, size: fontSize) ?? UIFont(name: "\(name)-Regular", size: fontSize) ?? .systemFont(ofSize: fontSize)
-        var traits: UIFontDescriptor.SymbolicTraits = []
-        if fmt.contains("b") { traits.insert(.traitBold) }
-        if fmt.contains("i") { traits.insert(.traitItalic) }
-        if !traits.isEmpty, let d = f.fontDescriptor.withSymbolicTraits(traits) { f = UIFont(descriptor: d, size: fontSize) }
+        if fmt.contains("b"), let d = f.fontDescriptor.withSymbolicTraits(.traitBold) { f = UIFont(descriptor: d, size: fontSize) }
         return f
     }
 

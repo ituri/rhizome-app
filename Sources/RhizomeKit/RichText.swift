@@ -42,7 +42,13 @@ public enum RichText {
     private static func hlFrom(tag: String) -> Highlight? { classAttr(tag).flatMap(Highlight.inClass) }
     private static func tcFrom(tag: String) -> TextColor? { classAttr(tag).flatMap(TextColor.inClass) }
 
-    public static func attributed(_ raw: String, doc: RDoc? = nil) -> AttributedString {
+    // The base point size for the current render, so bold/italic/code runs can be given an
+    // explicit font (Inter ships without an italic face, so the inline-intent italic doesn't
+    // slant — we substitute a real italic). 0 = fall back to inline presentation intents.
+    nonisolated(unsafe) private static var renderSize: CGFloat = 0
+
+    public static func attributed(_ raw: String, doc: RDoc? = nil, size: CGFloat = 0) -> AttributedString {
+        renderSize = size
         var out = AttributedString()
         var stack = [Style()]
         let chars = Array(raw)
@@ -159,11 +165,35 @@ public enum RichText {
     private static func append(_ string: String, _ style: Style, accent isAccent: Bool, _ out: inout AttributedString) {
         guard !string.isEmpty else { return }
         var piece = AttributedString(string)
-        var intent: InlinePresentationIntent = []
-        if style.bold { intent.insert(.stronglyEmphasized) }
-        if style.italic { intent.insert(.emphasized) }
-        if style.code { intent.insert(.code) }
-        if !intent.isEmpty { piece.inlinePresentationIntent = intent }
+        let styled = style.bold || style.italic || style.code
+        #if canImport(SwiftUI)
+        if styled, renderSize > 0 {
+            // give styled runs an explicit font so italic actually slants (Inter has no italic face)
+            if style.code {
+                piece.font = .system(size: renderSize, design: .monospaced)
+            } else if style.italic {
+                var f = Font.system(size: renderSize).italic()
+                if style.bold { f = f.weight(.bold) }
+                piece.font = f
+            } else if style.bold {
+                piece.font = .custom("Inter", fixedSize: renderSize).weight(.bold)
+            }
+        } else if styled {
+            var intent: InlinePresentationIntent = []
+            if style.bold { intent.insert(.stronglyEmphasized) }
+            if style.italic { intent.insert(.emphasized) }
+            if style.code { intent.insert(.code) }
+            piece.inlinePresentationIntent = intent
+        }
+        #else
+        if styled {
+            var intent: InlinePresentationIntent = []
+            if style.bold { intent.insert(.stronglyEmphasized) }
+            if style.italic { intent.insert(.emphasized) }
+            if style.code { intent.insert(.code) }
+            piece.inlinePresentationIntent = intent
+        }
+        #endif
         if style.strike { piece.strikethroughStyle = .single }
         #if canImport(SwiftUI)
         if let tc = style.textColor {
