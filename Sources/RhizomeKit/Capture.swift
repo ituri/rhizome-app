@@ -14,7 +14,9 @@ public enum Capture {
     public static func send(_ text: String) async throws {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw Failure(message: "Nothing to capture") }
+        AppGroup.logShare("send: url=\(AppGroup.serverURL?.absoluteString ?? "nil") cookie=\(AppGroup.sessionCookie != nil ? "set(\(AppGroup.sessionCookie!.count))" : "nil")")
         guard let base = AppGroup.serverURL, let cookie = AppGroup.sessionCookie else {
+            AppGroup.logShare("blocked: no server URL or cookie in the App Group")
             throw Failure(message: "Open Rhizome and sign in first")
         }
 
@@ -27,8 +29,10 @@ public enum Capture {
 
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
+            AppGroup.logShare("no HTTP response")
             throw Failure(message: "No response from the server")
         }
+        AppGroup.logShare("http \(http.statusCode)")
         if http.statusCode == 401 {
             throw Failure(message: "Session expired — open Rhizome, sign in, then try again")
         }

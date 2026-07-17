@@ -43,8 +43,10 @@ final class ShareViewController: SLComposeServiceViewController {
         Task {
             do {
                 try await Capture.send(line)
+                AppGroup.logShare("posted OK")
                 context?.completeRequest(returningItems: [], completionHandler: nil)
             } catch {
+                AppGroup.logShare("failed: \(error)")
                 context?.cancelRequest(withError: error)
             }
         }
