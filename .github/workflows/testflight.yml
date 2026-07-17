@@ -39,16 +39,17 @@ jobs:
       - name: Generate Xcode project
         run: xtool dev generate-xcode-project
 
-      # xtool writes an .xcworkspace under xtool/ (the project lives in xtool/.xtool-tmp/);
-      # the scheme is the product name from xtool.yml.
+      # xtool writes an .xcworkspace under xtool/ (the project lives in xtool/.xtool-tmp/).
+      # The app target/scheme is "<product>-App" (a bare "<product>" scheme is the SwiftPM
+      # library product, which archives empty).
       - name: Locate workspace & scheme
         run: |
           WORKSPACE=$(ls -d xtool/*.xcworkspace | head -1)
-          SCHEME=$(grep -E '^product:' xtool.yml | awk '{print $2}')
-          echo "WORKSPACE=$WORKSPACE" >> "$GITHUB_ENV"
-          echo "SCHEME=$SCHEME"       >> "$GITHUB_ENV"
-          echo "Using workspace=$WORKSPACE scheme=$SCHEME"
-          ls -la xtool
+          PRODUCT=$(grep -E '^product:' xtool.yml | awk '{print $2}')
+          echo "WORKSPACE=$WORKSPACE"     >> "$GITHUB_ENV"
+          echo "SCHEME=${PRODUCT}-App"    >> "$GITHUB_ENV"
+          echo "Using workspace=$WORKSPACE scheme=${PRODUCT}-App"
+          xcodebuild -list -workspace "$WORKSPACE" 2>/dev/null || true
 
       - name: Compute version
         id: ver
