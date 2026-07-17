@@ -21,7 +21,7 @@ let package = Package(
         ),
     ],
     targets: [
-        // Shared config + API client + capture client, used by the app and the extension.
+        // Shared config + API client + App Group glue, used by the app and the extension.
         .target(
             name: "RhizomeKit"
         ),

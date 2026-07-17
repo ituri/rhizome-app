@@ -6,7 +6,7 @@ import RhizomeKit
 
 /// Native quick-capture: the iOS share sheet → Rhizome's Inbox. Shows the standard
 /// compose sheet pre-filled with the shared text/URL; posting sends it to `/api/capture`
-/// with the write-scoped API key configured in `Secrets.swift`.
+/// as the user signed into the main app (via the shared App Group session).
 @objc(ShareViewController)
 final class ShareViewController: SLComposeServiceViewController {
     private var sharedURL: String?
@@ -28,7 +28,8 @@ final class ShareViewController: SLComposeServiceViewController {
     }
 
     override func isContentValid() -> Bool {
-        guard !Config.captureToken.isEmpty, Config.captureServerURL != nil else { return false }
+        // needs the main app to have signed in (its session is mirrored to the App Group)
+        guard AppGroup.serverURL != nil else { return false }
         let hasText = !contentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return hasText || sharedURL != nil
     }
