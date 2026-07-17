@@ -39,6 +39,7 @@ struct OutlineRow: View {
     private var isCollapsed: Bool { node?.collapsed ?? false }
     private var isDone: Bool { node?.done ?? false }
     private var isTodo: Bool { node?.format == "todo" }
+    private var isNumbered: Bool { node?.format == "number" }
     private var hasFiles: Bool { !(node?.files?.isEmpty ?? true) }
 
     /// Image / file attachments rendered below the bullet's text.
@@ -129,6 +130,17 @@ struct OutlineRow: View {
                         .frame(width: 14, height: lineH, alignment: .center)
                 }
                 .buttonStyle(.plain)
+            } else if isNumbered {
+                Button {
+                    if hasChildren { model.toggleCollapse(id) }
+                } label: {
+                    Text("\(model.numberedIndex(of: id) ?? 1).")
+                        .font(.rzFixed(model.fontSize))
+                        .foregroundStyle(Color.rzInkFaint)
+                        .frame(minWidth: 16, minHeight: lineH, alignment: .trailing)
+                }
+                .buttonStyle(.plain)
+                .disabled(!hasChildren)
             } else {
                 Button {
                     if hasChildren { model.toggleCollapse(id) }
@@ -193,6 +205,8 @@ struct KeyboardAccessory: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var showAssetPicker = false
     @State private var attachTarget: String?   // node to attach to, captured before the picker steals focus
+    @State private var showLinkAlert = false
+    @State private var linkText = ""
 
     // The picker/dialog modifiers live here (always in the tree), NOT on `bar` — presenting a
     // picker resigns the editor, which can clear editingID and remove `bar`; if the presenters
@@ -224,6 +238,16 @@ struct KeyboardAccessory: View {
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { image in attach(image, to: attachTarget) }
                 .ignoresSafeArea()
+        }
+        .alert("Add link", isPresented: $showLinkAlert) {
+            TextField("https://…", text: $linkText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+            Button("Link") { model.editorLink?(linkText); model.suppressBlur = false }
+            Button("Cancel", role: .cancel) { model.suppressBlur = false }
+        } message: {
+            Text("Link the selected text to a URL.")
         }
     }
 
@@ -302,33 +326,12 @@ struct KeyboardAccessory: View {
                     .padding(.horizontal, 12)
                 }
             } else {
-                Button { if let id = model.editingID { model.outdent(id) } } label: {
-                    Image(systemName: "arrow.left.to.line")
-                }
-                Button { if let id = model.editingID { model.indent(id) } } label: {
-                    Image(systemName: "arrow.right.to.line")
-                }
-                Button { attachTarget = model.editingID; showSourceDialog = true } label: {
-                    Image(systemName: "photo")
-                }
-                Button { if let id = model.editingID { model.toggleTodo(id) } } label: {
-                    Image(systemName: editingFormat == "todo" ? "checkmark.circle.fill" : "checkmark.circle")
-                }
-                Menu {
-                    ForEach(Highlight.allCases) { h in
-                        Button { model.editorHighlight?(h.rawValue) } label: {
-                            Label { Text(h.rawValue.capitalized) } icon: { hlSwatch(h) }
-                        }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 18) {
+                        ForEach(model.editorTools) { tool in toolButton(tool) }
                     }
-                    Button("None", role: .destructive) { model.editorHighlight?("") }
-                } label: {
-                    Image(systemName: "highlighter")
                 }
-                Button { Task { await model.insertGeoLink() } } label: {
-                    Image(systemName: model.locating ? "location.fill" : "location")
-                        .foregroundStyle(Color.rzAccent)   // always tappable + accent (never a dead black button)
-                }
-                Spacer()
+                Spacer(minLength: 8)
                 Button("Done") { model.endEditing() }.fontWeight(.semibold)
             }
         }
@@ -336,6 +339,71 @@ struct KeyboardAccessory: View {
         .frame(maxWidth: .infinity, minHeight: 48)
         .background(.regularMaterial)
         .tint(.rzAccent)
+    }
+
+    /// One editor-toolbar control; menus for the colour pickers, an alert for the link URL,
+    /// the image source dialog, everything else a direct action.
+    @ViewBuilder
+    private func toolButton(_ tool: EditorTool) -> some View {
+        switch tool {
+        case .highlight:
+            Menu {
+                ForEach(Highlight.allCases) { h in
+                    Button { model.editorHighlight?(h.rawValue) } label: { Label { Text(h.rawValue.capitalized) } icon: { hlSwatch(h) } }
+                }
+                Button("None", role: .destructive) { model.editorHighlight?("") }
+            } label: { Image(systemName: tool.icon) }
+        case .textColor:
+            Menu {
+                ForEach(TextColor.allCases) { c in
+                    Button { model.editorTextColor?(c.rawValue) } label: { Label { Text(c.rawValue.capitalized) } icon: { tcSwatch(c) } }
+                }
+                Button("None", role: .destructive) { model.editorTextColor?("") }
+            } label: { Image(systemName: tool.icon) }
+        case .image:
+            Button { attachTarget = model.editingID; showSourceDialog = true } label: { Image(systemName: tool.icon) }
+        case .link:
+            Button { model.suppressBlur = true; linkText = ""; showLinkAlert = true } label: { Image(systemName: tool.icon) }
+        case .geo:
+            Button { Task { await model.insertGeoLink() } } label: {
+                Image(systemName: model.locating ? "location.fill" : "location").foregroundStyle(Color.rzAccent)
+            }
+        case .todo:
+            Button { runTool(tool) } label: {
+                Image(systemName: editingFormat == "todo" ? "checkmark.circle.fill" : "checkmark.circle")
+            }
+        default:
+            Button { runTool(tool) } label: { Image(systemName: tool.icon) }
+        }
+    }
+
+    private func runTool(_ tool: EditorTool) {
+        guard let id = model.editingID else { return }
+        switch tool {
+        case .outdent: model.outdent(id)
+        case .indent: model.indent(id)
+        case .moveUp: model.moveUp(id)
+        case .moveDown: model.moveDown(id)
+        case .bold: model.editorInline?("b")
+        case .italic: model.editorInline?("i")
+        case .strikethrough: model.editorInline?("s")
+        case .code: model.editorInline?("c")
+        case .todo: model.toggleTodo(id)
+        case .numbered: model.setFormat(id, "number")
+        case .bulletReset: model.setFormat(id, nil)
+        default: break
+        }
+    }
+
+    /// A filled dot in a text colour, for the colour menu.
+    private func tcSwatch(_ c: TextColor) -> Image {
+        let s = c.srgb.light
+        let color = UIColor(red: s.0, green: s.1, blue: s.2, alpha: 1)
+        let img = UIGraphicsImageRenderer(size: CGSize(width: 18, height: 18)).image { _ in
+            color.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 1, y: 1, width: 16, height: 16)).fill()
+        }
+        return Image(uiImage: img.withRenderingMode(.alwaysOriginal))
     }
 }
 

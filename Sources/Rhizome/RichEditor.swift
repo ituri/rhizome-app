@@ -10,6 +10,8 @@ extension NSAttributedString.Key {
     static let rzFormat = NSAttributedString.Key("rzFormat")
     /// A highlight colour name (e.g. "yellow") on a run → serialized as `<span class="hl-…">`.
     static let rzHighlight = NSAttributedString.Key("rzHighlight")
+    /// A text colour name (e.g. "red") on a run → serialized as `<span class="tc-…">`.
+    static let rzColor = NSAttributedString.Key("rzColor")
 }
 
 /// Bridges a Rhizome node's stored HTML source ⇄ an editable `NSAttributedString`, so links,
@@ -70,6 +72,7 @@ enum RichEditor {
         var i = 0
         var fmt = ""
         var hl = ""   // current highlight colour name (from <span class="hl-…">)
+        var tc = ""   // current text colour name (from <span class="tc-…">)
         func setFmt(_ c: Character, _ on: Bool) {
             var set = Set(fmt); if on { set.insert(c) } else { set.remove(c) }; fmt = String(set.sorted())
         }
@@ -80,7 +83,7 @@ enum RichEditor {
                 let base = (closing ? String(tag.dropFirst()) : tag).split(whereSeparator: { $0 == " " }).first.map(String.init) ?? ""
                 if base == "a", !closing, let end = closeTagRange("a", chars, close + 1) {
                     let inner = String(chars[(close + 1)..<end.open])
-                    appendToken(out, display: plainStrip(inner), source: String(chars[i..<end.after]), fallback: "link", hl: hl)
+                    appendToken(out, display: plainStrip(inner), source: String(chars[i..<end.after]), fallback: "link", hl: hl, tc: tc)
                     i = end.after
                     continue
                 }
@@ -89,16 +92,18 @@ enum RichEditor {
                 case "i", "em": setFmt("i", !closing)
                 case "s", "strike", "del": setFmt("s", !closing)
                 case "code": setFmt("c", !closing)
-                case "span": hl = closing ? "" : (Highlight.inClass(tag)?.rawValue ?? hl)
+                case "span":
+                    if closing { hl = ""; tc = "" }
+                    else { hl = Highlight.inClass(tag)?.rawValue ?? hl; tc = TextColor.inClass(tag)?.rawValue ?? tc }
                 default: break
                 }
                 i = close + 1
             } else if chars[i] == "<" {
-                appendPlain(out, String(chars[i...]), fmt, hl, doc); break
+                appendPlain(out, String(chars[i...]), fmt, hl, tc, doc); break
             } else {
                 var j = i
                 while j < chars.count, chars[j] != "<" { j += 1 }
-                appendPlain(out, String(chars[i..<j]), fmt, hl, doc)
+                appendPlain(out, String(chars[i..<j]), fmt, hl, tc, doc)
                 i = j
             }
         }
@@ -108,37 +113,39 @@ enum RichEditor {
         return out
     }
 
-    private static func appendPlain(_ out: NSMutableAttributedString, _ text: String, _ fmt: String, _ hl: String, _ doc: RDoc?) {
+    private static func appendPlain(_ out: NSMutableAttributedString, _ text: String, _ fmt: String, _ hl: String, _ tc: String, _ doc: RDoc?) {
         let decoded = decodeEntities(text)
-        guard let re = tokenRE else { out.append(styled(decoded, fmt, hl: hl)); return }
+        guard let re = tokenRE else { out.append(styled(decoded, fmt, hl: hl, tc: tc)); return }
         let ns = decoded as NSString
         var last = 0
         for m in re.matches(in: decoded, range: NSRange(location: 0, length: ns.length)) {
             if m.range.location > last {
-                out.append(styled(ns.substring(with: NSRange(location: last, length: m.range.location - last)), fmt, hl: hl))
+                out.append(styled(ns.substring(with: NSRange(location: last, length: m.range.location - last)), fmt, hl: hl, tc: tc))
             }
             let tok = ns.substring(with: m.range)
             if tok.hasPrefix("((") {
                 let id = String(tok.dropFirst(2).dropLast(2))
-                appendToken(out, display: plainStrip(doc?.nodes[id]?.text ?? ""), source: tok, fallback: "ref", hl: hl)
+                appendToken(out, display: plainStrip(doc?.nodes[id]?.text ?? ""), source: tok, fallback: "ref", hl: hl, tc: tc)
             } else if tok.hasPrefix("[[") {
                 let inner = String(tok.dropFirst(2).dropLast(2))
                 let label = inner.contains("|") ? String(inner.split(separator: "|").last ?? "") : inner
-                appendToken(out, display: label, source: tok, fallback: "link", hl: hl)
+                appendToken(out, display: label, source: tok, fallback: "link", hl: hl, tc: tc)
             } else {
-                out.append(styled(tok, fmt, hl: hl, accented: true)) // #tag: accented but editable (no source)
+                out.append(styled(tok, fmt, hl: hl, tc: tc, accented: true)) // #tag: accented but editable (no source)
             }
             last = m.range.location + m.range.length
         }
-        if last < ns.length { out.append(styled(ns.substring(from: last), fmt, hl: hl)) }
+        if last < ns.length { out.append(styled(ns.substring(from: last), fmt, hl: hl, tc: tc)) }
     }
 
-    private static func styled(_ s: String, _ fmt: String, hl: String = "", accented: Bool = false) -> NSAttributedString {
+    private static func styled(_ s: String, _ fmt: String, hl: String = "", tc: String = "", accented: Bool = false) -> NSAttributedString {
         guard !s.isEmpty else { return NSAttributedString() }
-        var attrs: [NSAttributedString.Key: Any] = [.font: font(fmt), .foregroundColor: accented ? accent : ink]
+        let fg: UIColor = TextColor(rawValue: tc)?.uiColor ?? (accented ? accent : ink)
+        var attrs: [NSAttributedString.Key: Any] = [.font: font(fmt), .foregroundColor: fg]
         if !fmt.isEmpty { attrs[.rzFormat] = fmt }
         if fmt.contains("s") { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
         if let h = Highlight(rawValue: hl) { attrs[.rzHighlight] = hl; attrs[.backgroundColor] = h.uiColor }
+        if TextColor(rawValue: tc) != nil { attrs[.rzColor] = tc }
         return NSAttributedString(string: s, attributes: attrs)
     }
 
@@ -146,10 +153,11 @@ enum RichEditor {
         [.font: font(), .foregroundColor: accent, .underlineStyle: NSUnderlineStyle.single.rawValue]
     }
 
-    private static func appendToken(_ out: NSMutableAttributedString, display: String, source: String, fallback: String, hl: String = "") {
+    private static func appendToken(_ out: NSMutableAttributedString, display: String, source: String, fallback: String, hl: String = "", tc: String = "") {
         var attrs = tokenAttributes()
         attrs[.rzSource] = source
         if let h = Highlight(rawValue: hl) { attrs[.rzHighlight] = hl; attrs[.backgroundColor] = h.uiColor }
+        if TextColor(rawValue: tc) != nil { attrs[.rzColor] = tc }
         out.append(NSAttributedString(string: display.isEmpty ? fallback : display, attributes: attrs))
     }
 
@@ -165,9 +173,10 @@ enum RichEditor {
                 let text = (attr.string as NSString).substring(with: range)
                 piece = wrap(escapeHTML(text), attrs[.rzFormat] as? String ?? "")
             }
-            if let hl = attrs[.rzHighlight] as? String, Highlight(rawValue: hl) != nil {
-                piece = "<span class=\"hl-\(hl)\">\(piece)</span>"
-            }
+            var classes: [String] = []
+            if let tc = attrs[.rzColor] as? String, TextColor(rawValue: tc) != nil { classes.append("tc-\(tc)") }
+            if let hl = attrs[.rzHighlight] as? String, Highlight(rawValue: hl) != nil { classes.append("hl-\(hl)") }
+            if !classes.isEmpty { piece = "<span class=\"\(classes.joined(separator: " "))\">\(piece)</span>" }
             out += piece
         }
         return out
@@ -258,6 +267,9 @@ struct RichTextEditor: UIViewRepresentable {
         model.registerEditorResign { [weak tv] in _ = tv?.resignFirstResponder() }
         model.registerEditorHighlight { [weak coord = context.coordinator] name in coord?.applyHighlight(name) }
         model.registerEditorDeleteSlash { [weak coord = context.coordinator] in coord?.deleteSlashQuery() }
+        model.registerEditorInline { [weak coord = context.coordinator] ch in coord?.applyInline(ch) }
+        model.registerEditorTextColor { [weak coord = context.coordinator] name in coord?.applyTextColor(name) }
+        model.registerEditorLink { [weak coord = context.coordinator] url in coord?.insertLink(url) }
         return tv
         // NB: the keyboard bar lives as a SwiftUI .safeAreaInset(KeyboardAccessory) in the views
         // now — a UIHostingController hosted as inputAccessoryView didn't receive button taps.
@@ -357,6 +369,7 @@ struct RichTextEditor: UIViewRepresentable {
 
         func textViewDidEndEditing(_ tv: UITextView) {
             guard model.editingID == id else { return } // another row took over → this is a transition, not a blur
+            if model.suppressBlur { return }            // a modal (link prompt) stole focus — keep editing
             model.onEditorText(RichEditor.serialize(tv.attributedText))
             model.blurred()
         }
@@ -439,6 +452,72 @@ struct RichTextEditor: UIViewRepresentable {
             tv.attributedText = m
             tv.selectedRange = sel
             textViewDidChange(tv)   // re-serialize + sync
+        }
+
+        /// Toggle an inline format ("b"/"i"/"s"/"c") over the current selection.
+        func applyInline(_ ch: String) {
+            guard let tv = textView, tv.selectedRange.length > 0, let c = ch.first else { return }
+            let sel = tv.selectedRange
+            let m = NSMutableAttributedString(attributedString: tv.attributedText)
+            let startFmt = (m.attribute(.rzFormat, at: sel.location, effectiveRange: nil) as? String) ?? ""
+            let adding = !startFmt.contains(c)
+            var edits: [(NSRange, String)] = []
+            m.enumerateAttributes(in: sel, options: []) { attrs, range, _ in
+                if attrs[.rzSource] != nil { return }   // leave atomic tokens alone
+                var set = Set((attrs[.rzFormat] as? String) ?? "")
+                if adding { set.insert(c) } else { set.remove(c) }
+                edits.append((range, String(set.sorted())))
+            }
+            for (range, fmt) in edits {
+                if fmt.isEmpty { m.removeAttribute(.rzFormat, range: range) } else { m.addAttribute(.rzFormat, value: fmt, range: range) }
+                m.addAttribute(.font, value: RichEditor.font(fmt), range: range)
+                if fmt.contains("s") { m.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
+                else { m.removeAttribute(.strikethroughStyle, range: range) }
+            }
+            tv.attributedText = m
+            tv.selectedRange = sel
+            textViewDidChange(tv)
+        }
+
+        /// Apply (or, for "", clear) a text colour on the current selection.
+        func applyTextColor(_ name: String) {
+            guard let tv = textView, tv.selectedRange.length > 0 else { return }
+            let sel = tv.selectedRange
+            let m = NSMutableAttributedString(attributedString: tv.attributedText)
+            if let c = TextColor(rawValue: name) {
+                m.addAttribute(.rzColor, value: name, range: sel)
+                m.addAttribute(.foregroundColor, value: c.uiColor, range: sel)
+            } else {
+                var edits: [(NSRange, Bool)] = []
+                m.enumerateAttributes(in: sel, options: []) { attrs, range, _ in edits.append((range, attrs[.rzSource] != nil)) }
+                for (range, isToken) in edits {
+                    m.removeAttribute(.rzColor, range: range)
+                    m.addAttribute(.foregroundColor, value: isToken ? RichEditor.accent : RichEditor.ink, range: range)
+                }
+            }
+            tv.attributedText = m
+            tv.selectedRange = sel
+            textViewDidChange(tv)   // restyleTags re-accents #tags afterwards
+        }
+
+        /// Wrap the current selection in a link to `url` (a page hash or a web URL).
+        func insertLink(_ url: String) {
+            guard let tv = textView, tv.selectedRange.length > 0 else { return }
+            let sel = tv.selectedRange
+            let display = (tv.attributedText.string as NSString).substring(with: sel)
+            let trimmed = url.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { return }
+            let href = (trimmed.contains("://") || trimmed.hasPrefix("#") || trimmed.hasPrefix("mailto:")) ? trimmed : "https://\(trimmed)"
+            let source = "<a href=\"\(RichEditor.escapeHTML(href))\" rel=\"noopener\">\(RichEditor.escapeHTML(display))</a>"
+            var attrs = RichEditor.tokenAttributes()
+            attrs[.rzSource] = source
+            let token = NSAttributedString(string: display, attributes: attrs)
+            let m = NSMutableAttributedString(attributedString: tv.attributedText)
+            m.replaceCharacters(in: sel, with: token)
+            tv.attributedText = m
+            tv.selectedRange = NSRange(location: sel.location + token.length, length: 0)
+            tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
+            textViewDidChange(tv)
         }
     }
 }

@@ -110,6 +110,7 @@ struct SettingsView: View {
                 Section {
                     Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
                     Toggle("Haptic feedback", isOn: $model.haptics)
+                    NavigationLink("Editor toolbar") { EditorToolbarView() }
                 } header: {
                     Text("Behaviour")
                 } footer: {
@@ -278,5 +279,45 @@ struct DeleteAccountView: View {
         } message: {
             Text("This cannot be undone.")
         }
+    }
+}
+
+/// Add / remove / reorder the editor keyboard toolbar's buttons.
+struct EditorToolbarView: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        List {
+            Section {
+                ForEach(model.editorTools) { tool in
+                    Label(tool.label, systemImage: tool.icon)
+                }
+                .onMove { from, to in model.editorTools.move(fromOffsets: from, toOffset: to) }
+                .onDelete { model.editorTools.remove(atOffsets: $0) }
+            } header: {
+                Text("In toolbar")
+            } footer: {
+                Text("Drag to reorder, swipe to remove. Shown left of Done while you edit a bullet.")
+            }
+            if !model.availableTools.isEmpty {
+                Section("Available") {
+                    ForEach(model.availableTools) { tool in
+                        Button {
+                            model.editorTools.append(tool)
+                        } label: {
+                            HStack {
+                                Label(tool.label, systemImage: tool.icon)
+                                Spacer()
+                                Image(systemName: "plus.circle").foregroundStyle(Color.rzAccent)
+                            }
+                        }
+                        .tint(.primary)
+                    }
+                }
+            }
+        }
+        .paperBackground()
+        .navigationTitle("Editor toolbar")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { EditButton() }
     }
 }

@@ -118,6 +118,13 @@ final class AppModel {
         didSet { UserDefaults.standard.set(appLock, forKey: "appLock"); if !appLock { locked = false } }
     }
 
+    /// The editor keyboard toolbar's buttons, in order — user-customisable in Settings.
+    var editorTools: [EditorTool] {
+        didSet { UserDefaults.standard.set(editorTools.map(\.rawValue), forKey: "editorTools") }
+    }
+    /// Tools not currently in the toolbar (available to add).
+    var availableTools: [EditorTool] { EditorTool.allCases.filter { !editorTools.contains($0) } }
+
     /// Scale the outline text with the iOS system text size (Dynamic Type). Off keeps it fixed at
     /// your chosen size, so the line you're editing stays the same size as the rest.
     var scaleWithSystem: Bool {
@@ -171,6 +178,7 @@ final class AppModel {
         haptics = UserDefaults.standard.object(forKey: "haptics") as? Bool ?? true
         appLock = UserDefaults.standard.object(forKey: "appLock") as? Bool ?? false
         scaleWithSystem = UserDefaults.standard.object(forKey: "scaleWithSystem") as? Bool ?? false
+        editorTools = (UserDefaults.standard.array(forKey: "editorTools") as? [String])?.compactMap(EditorTool.init) ?? EditorTool.defaultOrder
         RichEditor.fontSize = CGFloat(fontSize)
         RichEditor.lineSpacing = CGFloat(lineSpacing)
         RZTheme.accent = accent
@@ -295,6 +303,7 @@ final class AppModel {
     private(set) var parentMap: [String: String] = [:]
     var editingID: String?
     var editText = ""                 // live buffer for the row being edited
+    @ObservationIgnored var suppressBlur = false   // a modal (link prompt) took focus — don't end editing
     var linkSuggestions: [LinkSuggestion] = []   // active [[ / (( autocomplete matches
     var linkSuggestKind: LinkKind?
     var slashCommands: [SlashCommand] = []       // active `/` slash-menu matches
@@ -325,6 +334,18 @@ final class AppModel {
     // Delete the open `/query` at the caret before a slash command runs.
     @ObservationIgnored var editorDeleteSlash: (@MainActor () -> Void)?
     func registerEditorDeleteSlash(_ f: @MainActor @escaping () -> Void) { editorDeleteSlash = f }
+
+    // Toggle an inline format ("b"/"i"/"s"/"c") on the editor's selection.
+    @ObservationIgnored var editorInline: (@MainActor (String) -> Void)?
+    func registerEditorInline(_ f: @MainActor @escaping (String) -> Void) { editorInline = f }
+
+    // Apply a text colour name ("" = clear) to the editor's selection.
+    @ObservationIgnored var editorTextColor: (@MainActor (String) -> Void)?
+    func registerEditorTextColor(_ f: @MainActor @escaping (String) -> Void) { editorTextColor = f }
+
+    // Wrap the editor's selection in a link to the given URL/page hash.
+    @ObservationIgnored var editorLink: (@MainActor (String) -> Void)?
+    func registerEditorLink(_ f: @MainActor @escaping (String) -> Void) { editorLink = f }
 
     /// The editor produced a new source string for the current row → buffer + debounce-sync.
     func onEditorText(_ source: String) {
@@ -479,6 +500,7 @@ final class AppModel {
             fmt("h2", "Heading 2", "textformat.size", "h2"),
             fmt("h3", "Heading 3", "textformat.size.smaller", "h3"),
             fmt("todo", "To-do", "checkmark.square", "todo"),
+            fmt("number", "Numbered list", "list.number", "number"),
             fmt("quote", "Quote", "text.quote", "quote"),
             fmt("code", "Code block", "curlybraces", "codeblock"),
             fmt("divider", "Divider", "minus", "divider"),
@@ -1115,6 +1137,34 @@ final class AppModel {
         doc?.nodes[newParent]?.children?.insert(id, at: clamped)
         parentMap[id] = newParent
         send([Op(kind: "move", node: id, hlc: clock.stamp(), parent: newParent, ord: ord)])
+    }
+
+    /// Swap a bullet with its previous sibling (move up within its parent).
+    func moveUp(_ id: String) {
+        flushCurrent()
+        guard let parent = parentMap[id], let idx = doc?.nodes[parent]?.children?.firstIndex(of: id), idx > 0 else { return }
+        move(id, to: parent, ord: idx - 1)
+        Haptics.impact(.light)
+    }
+
+    /// Swap a bullet with its next sibling (move down within its parent).
+    func moveDown(_ id: String) {
+        flushCurrent()
+        guard let parent = parentMap[id], let sibs = doc?.nodes[parent]?.children,
+              let idx = sibs.firstIndex(of: id), idx < sibs.count - 1 else { return }
+        move(id, to: parent, ord: idx + 1)
+        Haptics.impact(.light)
+    }
+
+    /// The 1-based number for a `format == "number"` bullet — its position within the current
+    /// run of consecutive numbered siblings (so numbered lists count 1, 2, 3…).
+    func numberedIndex(of id: String) -> Int? {
+        guard doc?.nodes[id]?.format == "number",
+              let parent = parentMap[id], let sibs = doc?.nodes[parent]?.children,
+              let idx = sibs.firstIndex(of: id) else { return nil }
+        var n = 1, i = idx - 1
+        while i >= 0, doc?.nodes[sibs[i]]?.format == "number" { n += 1; i -= 1 }
+        return n
     }
 
     /// Quick-capture into today's journal Inbox (server creates today if needed).
