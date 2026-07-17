@@ -66,7 +66,7 @@ struct OutlineRow: View {
     @ViewBuilder
     private func textDisplay(_ raw: String, _ lineH: CGFloat) -> some View {
         let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
-            || raw.contains("http://") || raw.contains("https://")   // bare URLs are tappable too
+            || raw.contains("http://") || raw.contains("https://") || raw.contains("www.")   // bare URLs are tappable too
         ZStack(alignment: .topLeading) {
             Color.clear
                 .contentShape(Rectangle())
