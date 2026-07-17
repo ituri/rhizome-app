@@ -1,35 +1,37 @@
 import Foundation
 
-/// Posts quick-capture text to Rhizome's `/api/capture` as the signed-in user, using the
-/// session shared from the main app via the App Group. The line lands under today's
-/// journal in the Inbox, like the `r` shell command.
+/// Posts quick-capture text to Rhizome's `/api/capture`, exactly like the `r` shell
+/// command: the line lands under today's journal in the Inbox, prefixed with the local
+/// time. Used by the Share Extension, which authenticates with a write-scoped API key
+/// (`Config.captureToken`) against `Config.captureServerURL`.
 public enum Capture {
     public struct Failure: Error, CustomStringConvertible {
         public let message: String
         public var description: String { message }
     }
 
-    /// Send one capture line. A leading `HH:mm` timestamp is added if the shared setting
-    /// is on. Requires the main app to be signed in (its session is mirrored to the group).
+    /// Send one capture line (a leading `HH:mm` timestamp is added for you).
     public static func send(_ text: String) async throws {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw Failure(message: "Nothing to capture") }
-        guard let base = AppGroup.serverURL else {
-            throw Failure(message: "Open Rhizome and sign in first")
+        guard !Config.captureToken.isEmpty, let base = Config.captureServerURL else {
+            throw Failure(message: "No capture token/server configured (set them in Secrets.swift)")
         }
 
-        var request = URLRequest(url: base.appendingPathComponent("api/capture"))
+        var components = URLComponents(
+            url: base.appendingPathComponent("api/capture"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [URLQueryItem(name: "token", value: Config.captureToken)]
+
+        var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        let line = AppGroup.captureTimestamp ? "\(timestamp()) \(body)" : body
-        request.httpBody = Data(line.utf8)
+        request.httpBody = Data("\(timestamp()) \(body)".utf8)
 
-        let (_, response) = try await AppGroup.session.data(for: request)
+        let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw Failure(message: "No response from the server")
-        }
-        if http.statusCode == 401 {
-            throw Failure(message: "Not signed in — open Rhizome, sign in, then try again")
         }
         guard (200..<300).contains(http.statusCode) else {
             throw Failure(message: "Server returned \(http.statusCode)")

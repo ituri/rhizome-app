@@ -31,10 +31,7 @@ final class AppModel {
 
     var phase: Phase = .loading
     var serverURLString: String {
-        didSet {
-            UserDefaults.standard.set(serverURLString, forKey: "serverURL")
-            AppGroup.setServerURL(serverURLString)   // let the Share Extension reach the same server
-        }
+        didSet { UserDefaults.standard.set(serverURLString, forKey: "serverURL") }
     }
     var user: RUser?
     var graphs: [RGraph] = []
@@ -53,7 +50,6 @@ final class AppModel {
     var captureTimestamp: Bool {
         didSet {
             UserDefaults.standard.set(captureTimestamp, forKey: "captureTimestamp")
-            AppGroup.setCaptureTimestamp(captureTimestamp)   // the Share Extension honours it too
             if !applyingRemotePrefs { pushPrefs() }
         }
     }
@@ -225,7 +221,6 @@ final class AppModel {
     func signOut() async {
         stopEvents()
         if let api { try? await api.logout() }
-        AppGroup.clearSession()   // stop the Share Extension posting after sign-out
         user = nil; graphs = []; doc = nil; version = 0
         phase = .signedOut
     }
@@ -244,7 +239,6 @@ final class AppModel {
         do {
             try await api.deleteAccount(password: password)
             stopEvents()
-            AppGroup.clearSession()
             user = nil; graphs = []; doc = nil; version = 0
             phase = .signedOut
             return nil
@@ -1239,9 +1233,6 @@ final class AppModel {
     private func adopt(user: RUser, graphs: [RGraph], api: RhizomeAPI) async {
         self.user = user
         self.graphs = graphs
-        // hand the signed-in session to the Share Extension via the App Group
-        AppGroup.mirrorSession(from: api.baseURL)
-        AppGroup.setCaptureTimestamp(captureTimestamp)
         if activeGraphID == nil || !graphs.contains(where: { $0.id == activeGraphID }) {
             activeGraphID = graphs.first?.id
         }
