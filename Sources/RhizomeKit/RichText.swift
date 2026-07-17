@@ -32,12 +32,15 @@ public enum RichText {
         var bold = false, italic = false, strike = false, code = false
         var link: URL?
         var highlight: Highlight?
+        var textColor: TextColor?
     }
 
-    private static func hlFrom(tag: String) -> Highlight? {
+    private static func classAttr(_ tag: String) -> String? {
         guard let r = tag.range(of: #"class\s*=\s*["']([^"']*)["']"#, options: .regularExpression) else { return nil }
-        return Highlight.inClass(String(tag[r]))
+        return String(tag[r])
     }
+    private static func hlFrom(tag: String) -> Highlight? { classAttr(tag).flatMap(Highlight.inClass) }
+    private static func tcFrom(tag: String) -> TextColor? { classAttr(tag).flatMap(TextColor.inClass) }
 
     public static func attributed(_ raw: String, doc: RDoc? = nil) -> AttributedString {
         var out = AttributedString()
@@ -87,7 +90,9 @@ public enum RichText {
         case "i", "em": style.italic = true
         case "s", "strike", "del": style.strike = true
         case "code": style.code = true
-        case "span": if let h = hlFrom(tag: tag) { style.highlight = h }   // <span class="hl-…">
+        case "span":
+            if let h = hlFrom(tag: tag) { style.highlight = h }   // <span class="hl-…">
+            if let c = tcFrom(tag: tag) { style.textColor = c }   // <span class="tc-…">
         case "br", "hr": return       // void: no push (kept simple; newlines are rare inline)
         default: break                // unknown open tag → push a copy so its close balances
         }
@@ -161,10 +166,12 @@ public enum RichText {
         if !intent.isEmpty { piece.inlinePresentationIntent = intent }
         if style.strike { piece.strikethroughStyle = .single }
         #if canImport(SwiftUI)
-        if isAccent || style.link != nil {
+        if let tc = style.textColor {
+            piece.foregroundColor = tc.color               // explicit text colour wins
+        } else if isAccent || style.link != nil {
             piece.foregroundColor = accent
-            if let url = style.link { piece.link = url; piece.underlineStyle = nil }
         }
+        if let url = style.link { piece.link = url; piece.underlineStyle = nil }
         if let h = style.highlight { piece.backgroundColor = h.color }
         #endif
         out.append(piece)

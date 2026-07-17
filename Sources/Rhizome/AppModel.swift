@@ -504,7 +504,6 @@ final class AppModel {
             fmt("quote", "Quote", "text.quote", "quote"),
             fmt("code", "Code block", "curlybraces", "codeblock"),
             fmt("divider", "Divider", "minus", "divider"),
-            fmt("bullet", "Bullet (reset)", "circle.fill", nil),
             SlashCommand(id: "done", label: "Complete", icon: "checkmark.circle") { [weak self] in self?.toggleDone(id) },
             SlashCommand(id: "duplicate", label: "Duplicate", icon: "plus.square.on.square") { [weak self] in self?.duplicate(id) },
             SlashCommand(id: "copylink", label: "Copy link", icon: "link") { [weak self] in self?.copyNodeLink(id) },

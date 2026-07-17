@@ -41,6 +41,12 @@ public enum TextColor: String, CaseIterable, Sendable, Identifiable {
     }
     #endif
     #if canImport(SwiftUI)
-    public var color: Color { let c = srgb.light; return Color(.sRGB, red: c.0, green: c.1, blue: c.2) }
+    public var color: Color {
+        #if canImport(UIKit)
+        Color(uiColor: uiColor)   // follows light/dark
+        #else
+        let c = srgb.light; return Color(.sRGB, red: c.0, green: c.1, blue: c.2)
+        #endif
+    }
     #endif
 }

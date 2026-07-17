@@ -96,8 +96,8 @@ struct OutlineRow: View {
                         // fixed size (matching the editor) unless the user opts into Dynamic Type
                         .font(isCode ? .system(size: model.fontSize, design: .monospaced)
                               : (model.scaleWithSystem ? .rz(size) : .rzFixed(size)))
-                        .fontWeight(isHeading ? .bold : .regular)
-                        .italic(isQuote)
+                        // nil (not .regular) so inline bold/italic in the text still renders
+                        .fontWeight(isHeading ? .bold : nil)
                         .lineSpacing(model.lineSpacing)
                         .strikethrough(isDone)
                         .foregroundStyle(isDone ? Color.rzDone : (isQuote ? Color.rzInkSoft : Color.rzInk))
@@ -390,7 +390,6 @@ struct KeyboardAccessory: View {
         case .code: model.editorInline?("c")
         case .todo: model.toggleTodo(id)
         case .numbered: model.setFormat(id, "number")
-        case .bulletReset: model.setFormat(id, nil)
         default: break
         }
     }

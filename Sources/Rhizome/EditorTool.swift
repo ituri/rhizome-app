@@ -6,7 +6,7 @@ enum EditorTool: String, CaseIterable, Identifiable, Codable {
     case outdent, indent, moveUp, moveDown
     case bold, italic, strikethrough, code
     case link, textColor, highlight
-    case todo, numbered, bulletReset
+    case todo, numbered
     case image, geo
 
     var id: String { rawValue }
@@ -26,7 +26,6 @@ enum EditorTool: String, CaseIterable, Identifiable, Codable {
         case .highlight: "Highlight"
         case .todo: "To-do"
         case .numbered: "Numbered list"
-        case .bulletReset: "Bullet"
         case .image: "Image"
         case .geo: "Location"
         }
@@ -47,7 +46,6 @@ enum EditorTool: String, CaseIterable, Identifiable, Codable {
         case .highlight: "highlighter"
         case .todo: "checkmark.circle"
         case .numbered: "list.number"
-        case .bulletReset: "circle.fill"
         case .image: "photo"
         case .geo: "location"
         }

@@ -314,6 +314,11 @@ struct EditorToolbarView: View {
                     }
                 }
             }
+            Section {
+                Button("Restore defaults", role: .destructive) {
+                    model.editorTools = EditorTool.defaultOrder
+                }
+            }
         }
         .paperBackground()
         .navigationTitle("Editor toolbar")
