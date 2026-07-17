@@ -172,9 +172,8 @@ public enum RichText {
             if style.code {
                 piece.font = .system(size: renderSize, design: .monospaced)
             } else if style.italic {
-                var f = Font.system(size: renderSize).italic()
-                if style.bold { f = f.weight(.bold) }
-                piece.font = f
+                // bundled Inter italic faces (registered by Fonts.register)
+                piece.font = .custom(style.bold ? "Inter-BoldItalic" : "Inter-Italic", fixedSize: renderSize)
             } else if style.bold {
                 piece.font = .custom("Inter", fixedSize: renderSize).weight(.bold)
             }

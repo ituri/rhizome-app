@@ -3,10 +3,14 @@ import CoreText
 
 /// Registers and exposes the bundled Inter typeface (the web app's sans font).
 enum Fonts {
-    /// Register the bundled font with the process so `Font.custom("Inter", …)` works.
+    /// Register the bundled Inter faces (upright + italic) so `Font.custom("Inter"…)` and
+    /// `Font.custom("Inter-Italic"…)` work.
     static func register() {
-        guard let url = Bundle.module.url(forResource: "Inter", withExtension: "ttf") else { return }
-        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        for name in ["Inter", "Inter-Italic", "Inter-BoldItalic"] {
+            if let url = Bundle.module.url(forResource: name, withExtension: "ttf") {
+                CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+            }
+        }
     }
 }
 
