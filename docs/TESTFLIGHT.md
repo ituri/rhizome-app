@@ -17,9 +17,9 @@ no `.p12`/`.mobileprovision` to build by hand.
 
 1. **Apple Developer Program** membership (you have this now). ✓
 2. **App Store Connect API key** — App Store Connect → *Users and Access* → *Integrations* →
-   *App Store Connect API* → **+**. Give it the **App Manager** role (needed so it can manage
-   signing). Note the **Key ID** and **Issuer ID**, and download the `.p8` **once** (you can't
-   re-download it).
+   *App Store Connect API* → **+**. Give it the **Admin** role — cloud-managed distribution
+   signing needs it; App Manager gets a "Cloud signing permission error". Note the **Key ID**
+   and **Issuer ID**, and download the `.p8` **once** (you can't re-download it).
 3. **Create the app record** — App Store Connect → *Apps* → **+ New App**, platform iOS, bundle ID
    `org.syslinx.rhizome`, pick a name + primary language + SKU. The build won't appear under
    TestFlight until this record exists.
@@ -38,7 +38,7 @@ Repo → *Settings → Secrets and variables → Actions* → **New repository s
 | Secret | What it is |
 |---|---|
 | `APPLE_TEAM_ID` | Your 10-character Team ID (developer.apple.com → *Membership*). |
-| `ASC_KEY_ID` | The API **Key ID** from step 2. |
+| `ASC_KEY_ID` | The API **Key ID** from step 2 (Admin role). |
 | `ASC_ISSUER_ID` | The API **Issuer ID** from step 2. |
 | `ASC_KEY_P8_BASE64` | The `.p8` file, base64-encoded: `base64 -w0 AuthKey_XXXXXXXXXX.p8` |
 
