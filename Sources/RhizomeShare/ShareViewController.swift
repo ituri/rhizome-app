@@ -29,7 +29,7 @@ final class ShareViewController: SLComposeServiceViewController {
 
     override func isContentValid() -> Bool {
         // needs the main app to have signed in (its session is mirrored to the App Group)
-        guard AppGroup.serverURL != nil else { return false }
+        guard AppGroup.serverURL != nil, AppGroup.sessionCookie != nil else { return false }
         let hasText = !contentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return hasText || sharedURL != nil
     }
