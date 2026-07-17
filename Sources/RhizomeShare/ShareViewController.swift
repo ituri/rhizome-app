@@ -28,8 +28,8 @@ final class ShareViewController: SLComposeServiceViewController {
     }
 
     override func isContentValid() -> Bool {
-        // keep Post enabled whenever there's content, so didSelectPost always runs (and logs the
-        // outcome) even when the App Group session is missing — surfaces the real reason.
+        // needs the main app to have signed in (its session is mirrored to the App Group)
+        guard AppGroup.serverURL != nil, AppGroup.sessionCookie != nil else { return false }
         let hasText = !contentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return hasText || sharedURL != nil
     }
@@ -43,10 +43,8 @@ final class ShareViewController: SLComposeServiceViewController {
         Task {
             do {
                 try await Capture.send(line)
-                AppGroup.logShare("posted OK")
                 context?.completeRequest(returningItems: [], completionHandler: nil)
             } catch {
-                AppGroup.logShare("failed: \(error)")
                 context?.cancelRequest(withError: error)
             }
         }

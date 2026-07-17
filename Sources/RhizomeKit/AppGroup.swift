@@ -48,13 +48,4 @@ public enum AppGroup {
 
     /// Drop the shared session on sign-out so the extension can no longer post.
     public static func clearSession() { defaults?.removeObject(forKey: "sessionCookie") }
-
-    // MARK: - diagnostics (the extension logs its last outcome; the app shows it in Settings)
-
-    public static func logShare(_ text: String) {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss"
-        defaults?.set("[\(f.string(from: Date()))] \(text)", forKey: "shareLog")
-    }
-    public static var shareLog: String? { defaults?.string(forKey: "shareLog") }
 }
