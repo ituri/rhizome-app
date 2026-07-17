@@ -9,11 +9,13 @@ import Foundation
 public enum AppGroup {
     public static let id = "group.org.syslinx.rhizome"
 
-    /// Cookie storage shared between the app and the extension.
-    public static let cookieStorage = HTTPCookieStorage.sharedCookieStorage(forGroupContainerIdentifier: id)
+    /// Cookie storage shared between the app and the extension (a per-group singleton, so a
+    /// computed accessor returns the same instance each call — and sidesteps the Swift 6
+    /// non-Sendable static-let concurrency check).
+    public static var cookieStorage: HTTPCookieStorage { HTTPCookieStorage.sharedCookieStorage(forGroupContainerIdentifier: id) }
 
     /// Small key/value store shared with the extension (server URL, capture prefs).
-    public static let defaults = UserDefaults(suiteName: id)
+    public static var defaults: UserDefaults? { UserDefaults(suiteName: id) }
 
     /// A URLSession backed by the shared cookie storage (used by the extension).
     public static let session: URLSession = {
