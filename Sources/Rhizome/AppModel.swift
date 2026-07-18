@@ -760,6 +760,14 @@ final class AppModel {
 
     func parentOf(_ id: String) -> String? { parentMap[id] }
 
+    /// Whether `id` is a real page — a top-level page (root's child, not the calendar root)
+    /// or a journal day — as opposed to a bullet that merely mentions one.
+    func isPage(_ id: String) -> Bool {
+        guard let node = doc?.nodes[id] else { return false }
+        if node.cal == "day" { return true }
+        return parentMap[id] == doc?.root && node.cal != "root"
+    }
+
     /// Full-text search in the active graph → matching node ids.
     func search(_ query: String) async -> [String] {
         guard let api, let graphID = activeGraph?.id,
