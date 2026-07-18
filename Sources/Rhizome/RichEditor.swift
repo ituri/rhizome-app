@@ -3,9 +3,14 @@ import UIKit
 import RhizomeKit
 
 extension NSAttributedString.Key {
-    /// A token run's exact source (e.g. `<a href="#/n/ID">Label</a>` or `((id))`). Present →
-    /// the run is an atomic, non-editable token; serialization emits this verbatim.
-    static let rzSource = NSAttributedString.Key("rzSource")
+    /// A link run's href (`#/n/ID` internal or `https://…` external). The run's TEXT stays editable
+    /// (an alias): serialization emits `<a href="…">currentText</a>`, so editing the text keeps the
+    /// link. Opened via long-press, not tap.
+    static let rzHref = NSAttributedString.Key("rzHref")
+    /// A block reference's target id → serialized as `((id))`; its text is the live block content.
+    static let rzRef = NSAttributedString.Key("rzRef")
+    /// An unresolved `[[Name]]` wiki link → serialized as `[[currentText]]` (text = page name).
+    static let rzWiki = NSAttributedString.Key("rzWiki")
     /// Inline format flags on a plain run — a sorted subset of "bisc" (bold/italic/strike/code).
     static let rzFormat = NSAttributedString.Key("rzFormat")
     /// A highlight colour name (e.g. "yellow") on a run → serialized as `<span class="hl-…">`.
@@ -16,8 +21,9 @@ extension NSAttributedString.Key {
 
 /// Bridges a Rhizome node's stored HTML source ⇄ an editable `NSAttributedString`, so links,
 /// block references and tags render inline (as pills / accented text) *while* you edit — the
-/// thing a plain `TextField` can't do. Tokens carry their verbatim source in `.rzSource` and
-/// are treated atomically; plain text is HTML-escaped and re-wrapped in `<b>/<i>/<s>/<code>`.
+/// thing a plain `TextField` can't do. Links/refs are EDITABLE accented runs carrying their target
+/// (`.rzHref`/`.rzRef`/`.rzWiki`); serialization rebuilds `<a href>` / `((id))` / `[[name]]` from
+/// the run's current text. Plain text is HTML-escaped and re-wrapped in `<b>/<i>/<s>/<code>`.
 @MainActor
 enum RichEditor {
     // configurable from Settings (AppModel mirrors the persisted values into these)
@@ -91,7 +97,8 @@ enum RichEditor {
                 let base = (closing ? String(tag.dropFirst()) : tag).split(whereSeparator: { $0 == " " }).first.map(String.init) ?? ""
                 if base == "a", !closing, let end = closeTagRange("a", chars, close + 1) {
                     let inner = String(chars[(close + 1)..<end.open])
-                    appendToken(out, display: plainStrip(inner), source: String(chars[i..<end.after]), fallback: "link", hl: hl, tc: tc)
+                    let href = hrefIn(String(chars[(i + 1)..<close]))   // raw tag → case-preserving href
+                    out.append(linkRun(plainStrip(inner), fallback: "link", key: .rzHref, value: href, hl: hl, tc: tc))
                     i = end.after
                     continue
                 }
@@ -133,11 +140,11 @@ enum RichEditor {
             let tok = ns.substring(with: m.range)
             if tok.hasPrefix("((") {
                 let id = String(tok.dropFirst(2).dropLast(2))
-                appendToken(out, display: plainStrip(doc?.nodes[id]?.text ?? ""), source: tok, fallback: "ref", hl: hl, tc: tc)
+                out.append(linkRun(plainStrip(doc?.nodes[id]?.text ?? ""), fallback: "ref", key: .rzRef, value: id, hl: hl, tc: tc))
             } else if tok.hasPrefix("[[") {
                 let inner = String(tok.dropFirst(2).dropLast(2))
                 let label = inner.contains("|") ? String(inner.split(separator: "|").last ?? "") : inner
-                appendToken(out, display: label, source: tok, fallback: "link", hl: hl, tc: tc)
+                out.append(linkRun(label, fallback: "link", key: .rzWiki, value: "1", hl: hl, tc: tc))
             } else {
                 out.append(styled(tok, fmt, hl: hl, tc: tc, accented: true)) // #tag: accented but editable (no source)
             }
@@ -161,12 +168,32 @@ enum RichEditor {
         [.font: font(), .foregroundColor: accent, .underlineStyle: NSUnderlineStyle.single.rawValue]
     }
 
-    private static func appendToken(_ out: NSMutableAttributedString, display: String, source: String, fallback: String, hl: String = "", tc: String = "") {
+    /// An editable, link-styled run carrying its target (rzHref/rzRef/rzWiki) — NOT an atomic
+    /// token: the cursor can enter it and its text can change. `key`/`value` is the target attr.
+    static func linkRun(_ display: String, fallback: String, key: NSAttributedString.Key, value: Any, hl: String = "", tc: String = "") -> NSAttributedString {
         var attrs = tokenAttributes()
-        attrs[.rzSource] = source
+        attrs[key] = value
         if let h = Highlight(rawValue: hl) { attrs[.rzHighlight] = hl; attrs[.backgroundColor] = h.uiColor }
         if TextColor(rawValue: tc) != nil { attrs[.rzColor] = tc }
-        out.append(NSAttributedString(string: display.isEmpty ? fallback : display, attributes: attrs))
+        return NSAttributedString(string: display.isEmpty ? fallback : display, attributes: attrs)
+    }
+
+    /// The href value from a raw (case-preserving) `<a …>` tag string.
+    static func hrefIn(_ tag: String) -> String {
+        guard let r = tag.range(of: #"href\s*=\s*["']([^"']*)["']"#, options: .regularExpression) else { return "" }
+        let match = String(tag[r])
+        guard let q = match.range(of: #"["']([^"']*)["']"#, options: .regularExpression) else { return "" }
+        return String(match[q]).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+    }
+
+    /// Build an editable link run from an autocomplete token source (`<a …>`, `((id))`, or `[[…]]`).
+    static func linkRunFromSource(display: String, source: String) -> NSAttributedString {
+        if source.hasPrefix("<a") {
+            return linkRun(display, fallback: "link", key: .rzHref, value: hrefIn(source))
+        } else if source.hasPrefix("((") {
+            return linkRun(display, fallback: "ref", key: .rzRef, value: String(source.dropFirst(2).dropLast(2)))
+        }
+        return linkRun(display, fallback: "link", key: .rzWiki, value: "1")
     }
 
     // MARK: - attributed → source HTML
@@ -174,11 +201,15 @@ enum RichEditor {
     static func serialize(_ attr: NSAttributedString) -> String {
         var out = ""
         attr.enumerateAttributes(in: NSRange(location: 0, length: attr.length), options: []) { attrs, range, _ in
+            let text = (attr.string as NSString).substring(with: range)
             var piece: String
-            if let src = attrs[.rzSource] as? String {
-                piece = src
+            if let href = attrs[.rzHref] as? String {
+                piece = "<a href=\"\(escapeHTML(href))\">\(wrap(escapeHTML(text), attrs[.rzFormat] as? String ?? ""))</a>"
+            } else if let ref = attrs[.rzRef] as? String {
+                piece = "((\(ref)))"
+            } else if attrs[.rzWiki] != nil {
+                piece = "[[\(text)]]"
             } else {
-                let text = (attr.string as NSString).substring(with: range)
                 piece = wrap(escapeHTML(text), attrs[.rzFormat] as? String ?? "")
             }
             var classes: [String] = []
@@ -365,14 +396,13 @@ struct RichTextEditor: UIViewRepresentable {
                 let label = before.substring(with: match.range(at: 1))
                 var url = before.substring(with: match.range(at: 2))
                 if url.lowercased().hasPrefix("www.") { url = "https://" + url }
-                var attrs = RichEditor.tokenAttributes()
-                attrs[.rzSource] = "<a href=\"\(RichEditor.escapeHTML(url))\">\(RichEditor.escapeHTML(label))</a>"
-                let token = NSMutableAttributedString(string: label, attributes: attrs)
+                let token = NSMutableAttributedString(attributedString: RichEditor.linkRun(label, fallback: "link", key: .rzHref, value: url))
                 token.append(NSAttributedString(string: " ", attributes: [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]))
                 let mut = NSMutableAttributedString(attributedString: tv.attributedText)
                 mut.replaceCharacters(in: match.range, with: token)
                 tv.attributedText = mut
                 tv.selectedRange = NSRange(location: match.range.location + token.length, length: 0)
+                tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]   // leave the link run
                 model.onEditorText(RichEditor.serialize(tv.attributedText))
                 return true
             }
@@ -410,8 +440,9 @@ struct RichTextEditor: UIViewRepresentable {
             let storage = tv.textStorage
             let whole = storage.string as NSString
             var plain: [NSRange] = []
-            storage.enumerateAttribute(.rzSource, in: NSRange(location: 0, length: storage.length)) { src, range, _ in
-                if src == nil { plain.append(range) }   // collect first, mutate after
+            storage.enumerateAttributes(in: NSRange(location: 0, length: storage.length)) { attrs, range, _ in
+                // a run is "plain" (tags may be re-accented in it) unless it's a link/ref/wiki run
+                if attrs[.rzHref] == nil, attrs[.rzRef] == nil, attrs[.rzWiki] == nil { plain.append(range) }
             }
             let sel = tv.selectedRange
             storage.beginEditing()
@@ -432,17 +463,7 @@ struct RichTextEditor: UIViewRepresentable {
                 // backspace at the very start of an empty bullet → delete it and move up
                 if range.location == 0, range.length == 0, tv.attributedText.length == 0,
                    model.backspaceDelete(id) != nil { return false }
-                // otherwise: remove a touched token whole rather than one char of it
-                var del = range
-                if range.length == 0, range.location > 0 { del = NSRange(location: range.location - 1, length: 1) }
-                if let tok = tokenRange(intersecting: del, in: tv.attributedText) {
-                    let m = NSMutableAttributedString(attributedString: tv.attributedText)
-                    m.deleteCharacters(in: tok)
-                    tv.attributedText = m
-                    tv.selectedRange = NSRange(location: tok.location, length: 0)
-                    textViewDidChange(tv)
-                    return false
-                }
+                // links/refs are ordinary editable runs now — normal char-by-char deletion applies
             }
             return true
         }
@@ -457,15 +478,6 @@ struct RichTextEditor: UIViewRepresentable {
             if model.suppressBlur { return }            // a modal (link prompt) stole focus — keep editing
             model.onEditorText(RichEditor.serialize(tv.attributedText))
             model.blurred()
-        }
-
-        private func tokenRange(intersecting r: NSRange, in attr: NSAttributedString) -> NSRange? {
-            guard r.location >= 0, r.location < attr.length else { return nil }
-            var found: NSRange?
-            attr.enumerateAttribute(.rzSource, in: NSRange(location: 0, length: attr.length)) { val, range, stop in
-                if val != nil, NSIntersectionRange(range, r).length > 0 { found = range; stop.pointee = true }
-            }
-            return found
         }
 
         private func updateSuggestions(_ tv: UITextView) {
@@ -485,9 +497,7 @@ struct RichTextEditor: UIViewRepresentable {
             guard r.location != NSNotFound else { model.clearLinkSuggestions(); return }
             let (display, source) = model.tokenSource(for: s, kind: kind)
             guard !source.isEmpty else { model.clearLinkSuggestions(); return }
-            var attrs = RichEditor.tokenAttributes()
-            attrs[.rzSource] = source
-            let token = NSMutableAttributedString(string: display, attributes: attrs)
+            let token = NSMutableAttributedString(attributedString: RichEditor.linkRunFromSource(display: display, source: source))
             token.append(NSAttributedString(string: " ", attributes: [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]))
             let m = NSMutableAttributedString(attributedString: tv.attributedText)
             m.replaceCharacters(in: NSRange(location: r.location, length: caret - r.location), with: token)
@@ -548,7 +558,6 @@ struct RichTextEditor: UIViewRepresentable {
             let adding = !startFmt.contains(c)
             var edits: [(NSRange, String)] = []
             m.enumerateAttributes(in: sel, options: []) { attrs, range, _ in
-                if attrs[.rzSource] != nil { return }   // leave atomic tokens alone
                 var set = Set((attrs[.rzFormat] as? String) ?? "")
                 if adding { set.insert(c) } else { set.remove(c) }
                 edits.append((range, String(set.sorted())))
@@ -574,10 +583,13 @@ struct RichTextEditor: UIViewRepresentable {
                 m.addAttribute(.foregroundColor, value: c.uiColor, range: sel)
             } else {
                 var edits: [(NSRange, Bool)] = []
-                m.enumerateAttributes(in: sel, options: []) { attrs, range, _ in edits.append((range, attrs[.rzSource] != nil)) }
-                for (range, isToken) in edits {
+                m.enumerateAttributes(in: sel, options: []) { attrs, range, _ in
+                    let isLink = attrs[.rzHref] != nil || attrs[.rzRef] != nil || attrs[.rzWiki] != nil
+                    edits.append((range, isLink))
+                }
+                for (range, isLink) in edits {
                     m.removeAttribute(.rzColor, range: range)
-                    m.addAttribute(.foregroundColor, value: isToken ? RichEditor.accent : RichEditor.ink, range: range)
+                    m.addAttribute(.foregroundColor, value: isLink ? RichEditor.accent : RichEditor.ink, range: range)
                 }
             }
             tv.attributedText = m
@@ -593,10 +605,7 @@ struct RichTextEditor: UIViewRepresentable {
             let trimmed = url.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { return }
             let href = (trimmed.contains("://") || trimmed.hasPrefix("#") || trimmed.hasPrefix("mailto:")) ? trimmed : "https://\(trimmed)"
-            let source = "<a href=\"\(RichEditor.escapeHTML(href))\" rel=\"noopener\">\(RichEditor.escapeHTML(display))</a>"
-            var attrs = RichEditor.tokenAttributes()
-            attrs[.rzSource] = source
-            let token = NSAttributedString(string: display, attributes: attrs)
+            let token = RichEditor.linkRun(display, fallback: "link", key: .rzHref, value: href)
             let m = NSMutableAttributedString(attributedString: tv.attributedText)
             m.replaceCharacters(in: sel, with: token)
             tv.attributedText = m
