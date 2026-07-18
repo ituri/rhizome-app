@@ -151,7 +151,11 @@ public enum RichText {
                 s.link = URL(string: "rhizome://n/\(id)")   // tapping a block ref jumps to its bullet
                 append(plainStrip(target), s, accent: true, &out)
             } else if token.hasPrefix("[[") {
-                append(String(token.dropFirst(2).dropLast(2)), style, accent: true, &out)
+                // a raw [[Name]] (unresolved wiki link) → link to the page with that title, if one exists
+                let name = String(token.dropFirst(2).dropLast(2))
+                var s = style
+                if let pid = pageID(named: name, doc: doc) { s.link = URL(string: "rhizome://n/\(pid)") }
+                append(name, s, accent: true, &out)
             } else {
                 append(token, style, accent: true, &out)   // #tag
             }
@@ -204,6 +208,17 @@ public enum RichText {
         if let h = style.highlight { piece.backgroundColor = h.color }
         #endif
         out.append(piece)
+    }
+
+    /// The id of the top-level page whose title matches `name` (case-insensitive), else nil.
+    static func pageID(named name: String, doc: RDoc?) -> String? {
+        guard let doc else { return nil }
+        let q = name.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return nil }
+        for id in doc.nodes[doc.root]?.children ?? [] where doc.nodes[id]?.cal != "root" {
+            if plainStrip(doc.nodes[id]?.text ?? "").trimmingCharacters(in: .whitespaces).lowercased() == q { return id }
+        }
+        return nil
     }
 
     /// The node id from an internal `rhizome://n/<id>` link, else nil.

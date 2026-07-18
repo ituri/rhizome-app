@@ -441,10 +441,12 @@ struct RichTextEditor: UIViewRepresentable {
         }
 
         func textViewDidEndEditing(_ tv: UITextView) {
-            guard model.editingID == id else { return } // another row took over → this is a transition, not a blur
             if model.suppressBlur { return }            // a modal (link prompt) stole focus — keep editing
-            // raw-on-focus: resolve the raw markdown ([[Name]] / [text](url)) back to stored links
-            model.onEditorText(model.resolveEditorLinks(RichEditor.serialize(tv.attributedText)))
+            // raw-on-focus: resolve THIS bullet's raw markdown ([[Name]] / [text](url)) back to stored
+            // links and persist it by id — even when another row already took over (editingID moved on),
+            // so leaving a bullet by tapping another one still saves the resolved link.
+            model.persistText(id, model.resolveEditorLinks(RichEditor.serialize(tv.attributedText)))
+            guard model.editingID == id else { return } // another row took over → transition, not a blur
             model.blurred()
         }
 

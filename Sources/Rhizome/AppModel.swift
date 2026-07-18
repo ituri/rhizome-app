@@ -618,6 +618,15 @@ final class AppModel {
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(html)])])
     }
 
+    /// Persist a specific node's text — used on blur/transition so a bullet's resolved links get
+    /// saved even when focus has already moved to another row (editText tracks only the active row).
+    func persistText(_ id: String, _ text: String) {
+        guard doc?.nodes[id] != nil, text != (doc?.nodes[id]?.text ?? "") else { return }
+        doc?.nodes[id]?.text = text
+        if editingID == id { editText = text }
+        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(text)])])
+    }
+
     /// On blur, turn the editor's raw markdown back into stored links: `[[Name]]` → an internal
     /// `<a href="#/n/ID">` (resolving/creating the page), `[text](url)` → an external `<a href>`.
     /// `((id))` is already the stored form. Mirrors the web editorInputHook, but at blur time.
@@ -658,7 +667,7 @@ final class AppModel {
         let q = name.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return "" }
         if let doc {
-            for id in doc.nodes[doc.root]?.children ?? [] where doc.nodes[id]?.cal == nil {
+            for id in doc.nodes[doc.root]?.children ?? [] where doc.nodes[id]?.cal != "root" {
                 let title = RichText.plain(doc.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
                 if title.lowercased() == q.lowercased() { return id }
             }
