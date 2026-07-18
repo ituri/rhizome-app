@@ -38,6 +38,7 @@ struct SettingsView: View {
                         LabeledContent("Role", value: "Admin")
                     }
                     NavigationLink("Change password") { ChangePasswordView() }
+                    NavigationLink("Statistics") { StatisticsView() }
                     if let base = URL(string: model.serverURLString.trimmingCharacters(in: .whitespaces)), base.scheme != nil {
                         Link("Privacy policy", destination: base.appendingPathComponent("privacy"))
                     }
@@ -230,6 +231,81 @@ struct ChangePasswordView: View {
         .paperBackground()
         .navigationTitle("Change password")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Storage usage + the applicable quota for the signed-in user (GET /api/me/stats).
+struct StatisticsView: View {
+    @Environment(AppModel.self) private var model
+    @State private var stats: RStats?
+    @State private var loading = true
+
+    static func fmt(_ n: Int) -> String {
+        let d = Double(n)
+        if n < 1_000 { return "\(n) B" }
+        if n < 1_000_000 { return String(format: "%.1f KB", d / 1e3) }
+        if n < 1_000_000_000 { return String(format: "%.1f MB", d / 1e6) }
+        return String(format: "%.2f GB", d / 1e9)
+    }
+
+    var body: some View {
+        Form {
+            if let s = stats {
+                Section("Usage") {
+                    LabeledContent("Pages", value: "\(s.pages)")
+                    LabeledContent("Notes", value: Self.fmt(s.noteBytes))
+                    LabeledContent("Images & files", value: Self.fmt(s.fileBytes))
+                    LabeledContent("Total", value: Self.fmt(s.totalBytes))
+                }
+                if s.quotaBytes > 0 {
+                    Section("Storage quota") { QuotaBar(stats: s) }
+                } else {
+                    Section { Text("No storage limit set.").foregroundStyle(.secondary) }
+                }
+            } else if loading {
+                Section { HStack { Spacer(); ProgressView(); Spacer() } }
+            } else {
+                Section { Text("Could not load statistics.").foregroundStyle(.secondary) }
+            }
+        }
+        .paperBackground()
+        .navigationTitle("Statistics")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { stats = await model.fetchStats(); loading = false }
+        .refreshable { stats = await model.fetchStats() }
+    }
+}
+
+private struct QuotaBar: View {
+    let stats: RStats
+    var body: some View {
+        let pct = Double(stats.totalBytes) / Double(max(1, stats.quotaBytes)) * 100
+        let hardPct = 100 + Double(stats.tolerancePct)
+        let color: Color = pct <= 100 ? .rzAccent : (pct <= hardPct ? .orange : .red)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(String(format: pct < 10 ? "%.1f%% used" : "%.0f%% used", pct))
+                Spacer()
+                Text("\(StatisticsView.fmt(stats.totalBytes)) / \(StatisticsView.fmt(stats.quotaBytes))")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.secondary.opacity(0.2))
+                    Capsule().fill(color).frame(width: geo.size.width * min(1, pct / 100))
+                }
+            }
+            .frame(height: 10)
+            if pct > hardPct {
+                Text("Storage full — new uploads are blocked until you free space.")
+                    .font(.caption).foregroundStyle(.red)
+            } else if pct > 100 {
+                Text("Over your quota — within the \(stats.tolerancePct)% grace. Free space soon.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

@@ -254,6 +254,12 @@ final class AppModel {
         catch { return String(describing: error) }
     }
 
+    /// Fetch usage statistics + the applicable storage quota (nil if unavailable/offline).
+    func fetchStats() async -> RStats? {
+        guard let api else { return nil }
+        return try? await api.stats()
+    }
+
     /// Permanently delete the account, then return to the signed-out state. Returns nil on
     /// success, else an error message.
     func deleteAccount(password: String) async -> String? {

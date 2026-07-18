@@ -27,6 +27,16 @@ public struct RMe: Codable, Sendable {
     public let authRequired: Bool?
 }
 
+/// Usage statistics + the storage quota that applies to the signed-in user (GET /api/me/stats).
+public struct RStats: Codable, Sendable {
+    public var pages: Int
+    public var noteBytes: Int
+    public var fileBytes: Int
+    public var totalBytes: Int
+    public var quotaBytes: Int    // 0 = unlimited
+    public var tolerancePct: Int
+}
+
 /// Whether a file should render as an image — decided by its NAME extension (authoritative): a
 /// broken/edited extension (e.g. "Photo.jp") stops it rendering, and a missing mime type doesn't.
 public func looksLikeImage(_ s: String?) -> Bool {
@@ -166,6 +176,11 @@ public struct RhizomeAPI: Sendable {
     public func me() async throws -> RMe {
         let data = try await get("api/me")
         return try JSONDecoder().decode(RMe.self, from: data)
+    }
+
+    public func stats() async throws -> RStats {
+        let data = try await get("api/me/stats")
+        return try JSONDecoder().decode(RStats.self, from: data)
     }
 
     /// Save cross-device preferences (merged server-side with any existing prefs).
