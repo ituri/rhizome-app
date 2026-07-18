@@ -109,6 +109,7 @@ enum RichEditor {
                 case "b", "strong": out.append(styled("**", fmt, hl: hl, tc: tc))
                 case "i", "em": out.append(styled("*", fmt, hl: hl, tc: tc))
                 case "s", "strike", "del": out.append(styled("~~", fmt, hl: hl, tc: tc))
+                case "u", "ins": out.append(styled("__", fmt, hl: hl, tc: tc))
                 case "code": out.append(styled("`", fmt, hl: hl, tc: tc))
                 case "span":
                     if closing { hl = ""; tc = "" }
@@ -504,6 +505,7 @@ struct RichTextEditor: UIViewRepresentable {
             switch ch {
             case "b": marker = "**"
             case "i": marker = "*"
+            case "u": marker = "__"
             case "s": marker = "~~"
             case "c": marker = "`"
             default: return

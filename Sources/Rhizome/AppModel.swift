@@ -668,6 +668,7 @@ final class AppModel {
         }
         replace(#"`([^`\n]+?)`"#, "<code>$1</code>")
         replace(#"\*\*([^\n]+?)\*\*"#, "<b>$1</b>")
+        replace(#"__([^\n]+?)__"#, "<u>$1</u>")
         replace(#"~~([^\n]+?)~~"#, "<s>$1</s>")
         replace(#"(?<!\*)\*([^*\n]+?)\*(?!\*)"#, "<i>$1</i>")
         return out

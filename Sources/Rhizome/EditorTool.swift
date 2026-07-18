@@ -4,7 +4,7 @@ import Foundation
 /// in what order (Settings → Editor toolbar); the order is persisted in `AppModel.editorTools`.
 enum EditorTool: String, CaseIterable, Identifiable, Codable {
     case outdent, indent, moveUp, moveDown
-    case bold, italic, strikethrough, code
+    case bold, italic, underline, strikethrough, code
     case link, textColor, highlight
     case todo, numbered
     case image, geo
@@ -19,6 +19,7 @@ enum EditorTool: String, CaseIterable, Identifiable, Codable {
         case .moveDown: "Move down"
         case .bold: "Bold"
         case .italic: "Italic"
+        case .underline: "Underline"
         case .strikethrough: "Strikethrough"
         case .code: "Inline code"
         case .link: "Link"
@@ -39,6 +40,7 @@ enum EditorTool: String, CaseIterable, Identifiable, Codable {
         case .moveDown: "arrow.down"
         case .bold: "bold"
         case .italic: "italic"
+        case .underline: "underline"
         case .strikethrough: "strikethrough"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .link: "link"

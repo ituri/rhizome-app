@@ -29,7 +29,7 @@ public enum RichText {
     }
 
     private struct Style {
-        var bold = false, italic = false, strike = false, code = false
+        var bold = false, italic = false, strike = false, code = false, underline = false
         var link: URL?
         var highlight: Highlight?
         var textColor: TextColor?
@@ -95,6 +95,7 @@ public enum RichText {
         case "b", "strong": style.bold = true
         case "i", "em": style.italic = true
         case "s", "strike", "del": style.strike = true
+        case "u", "ins": style.underline = true
         case "code": style.code = true
         case "span":
             if let h = hlFrom(tag: tag) { style.highlight = h }   // <span class="hl-…">
@@ -198,6 +199,7 @@ public enum RichText {
         }
         #endif
         if style.strike { piece.strikethroughStyle = .single }
+        if style.underline { piece.underlineStyle = .single }
         #if canImport(SwiftUI)
         if let tc = style.textColor {
             piece.foregroundColor = tc.color               // explicit text colour wins

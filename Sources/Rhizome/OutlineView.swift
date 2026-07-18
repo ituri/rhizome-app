@@ -426,6 +426,7 @@ struct KeyboardAccessory: View {
         case .moveDown: model.moveDown(id)
         case .bold: model.editorInline?("b")
         case .italic: model.editorInline?("i")
+        case .underline: model.editorInline?("u")
         case .strikethrough: model.editorInline?("s")
         case .code: model.editorInline?("c")
         case .todo: model.toggleTodo(id)
