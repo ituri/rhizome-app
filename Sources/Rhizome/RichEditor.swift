@@ -335,17 +335,26 @@ struct RichTextEditor: UIViewRepresentable {
             let ns = tv.attributedText.string as NSString
             let caret = min(tv.selectedRange.location, ns.length)
 
-            // heading: the whole text so far is exactly a marker + trailing space ("## ")
-            if caret == ns.length, ns.range(of: "^#{1,3} $", options: .regularExpression).location == 0,
-               ns.length >= 2, ns.length <= 4 {
-                let level = ns.length - 1
-                let mut = NSMutableAttributedString(attributedString: tv.attributedText)
-                mut.deleteCharacters(in: NSRange(location: 0, length: ns.length))
-                tv.attributedText = mut
-                tv.selectedRange = NSRange(location: 0, length: 0)
-                model.onEditorText(RichEditor.serialize(tv.attributedText))
-                model.setFormat(id, "h\(level)")
-                return true
+            // block markers — the whole text so far is exactly a marker + a trailing space:
+            // "# "/"## "/"### " → heading, "> " → quote, "1. "/"1) " → numbered
+            if caret == ns.length {
+                var blockFmt: String?
+                if ns.range(of: "^#{1,3} $", options: .regularExpression).location == 0, ns.length >= 2, ns.length <= 4 {
+                    blockFmt = "h\(ns.length - 1)"
+                } else if ns.isEqual(to: "> ") {
+                    blockFmt = "quote"
+                } else if ns.range(of: "^[0-9]+[.)] $", options: .regularExpression).location == 0 {
+                    blockFmt = "number"
+                }
+                if let fmt = blockFmt {
+                    let mut = NSMutableAttributedString(attributedString: tv.attributedText)
+                    mut.deleteCharacters(in: NSRange(location: 0, length: ns.length))
+                    tv.attributedText = mut
+                    tv.selectedRange = NSRange(location: 0, length: 0)
+                    model.onEditorText(RichEditor.serialize(tv.attributedText))
+                    model.setFormat(id, fmt)
+                    return true
+                }
             }
 
             // named link: the text just before the caret ends with [label](url)
@@ -364,6 +373,30 @@ struct RichTextEditor: UIViewRepresentable {
                 mut.replaceCharacters(in: match.range, with: token)
                 tv.attributedText = mut
                 tv.selectedRange = NSRange(location: match.range.location + token.length, length: 0)
+                model.onEditorText(RichEditor.serialize(tv.attributedText))
+                return true
+            }
+
+            // inline: **bold** / *italic* / `code` → an editable styled run (a plain formatted run,
+            // NOT an atomic token — the cursor can go back in and change it later)
+            let inlineRules: [(fmt: String, pattern: String)] = [
+                ("b", "\\*\\*([^*\\n]+?)\\*\\*$"),
+                ("c", "`([^`\\n]+?)`$"),
+                ("i", "(?<!\\*)\\*([^*\\n]+?)\\*$"),
+            ]
+            for rule in inlineRules {
+                guard let re = try? NSRegularExpression(pattern: rule.pattern),
+                      let match = re.firstMatch(in: before as String, range: NSRange(location: 0, length: before.length)) else { continue }
+                let content = before.substring(with: match.range(at: 1))
+                if content.trimmingCharacters(in: .whitespaces).isEmpty { continue }
+                let run = NSAttributedString(string: content, attributes: [
+                    .font: RichEditor.font(rule.fmt), .foregroundColor: RichEditor.ink, .rzFormat: rule.fmt,
+                ])
+                let mut = NSMutableAttributedString(attributedString: tv.attributedText)
+                mut.replaceCharacters(in: match.range, with: run)
+                tv.attributedText = mut
+                tv.selectedRange = NSRange(location: match.range.location + run.length, length: 0)
+                tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]   // leave the styled run
                 model.onEditorText(RichEditor.serialize(tv.attributedText))
                 return true
             }
