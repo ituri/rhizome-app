@@ -318,12 +318,56 @@ struct RichTextEditor: UIViewRepresentable {
 
         func textViewDidChange(_ tv: UITextView) {
             guard model.editingID == id else { return }
+            if handleMarkdown(tv) { return }   // # heading / [text](url) link converted this change
             let source = RichEditor.serialize(tv.attributedText)
             lastSource = source
             model.onEditorText(source)
             tv.invalidateIntrinsicContentSize()
             updateSuggestions(tv)
             restyleTags(tv)
+        }
+
+        /// Live markdown while typing: `# `/`## `/`### ` at the very start of a bullet becomes a
+        /// heading; a full `[label](url)` becomes an inline link token (on the closing ')').
+        /// Returns true when it consumed the change (mirrors the web editorInputHook).
+        private func handleMarkdown(_ tv: UITextView) -> Bool {
+            guard tv.markedTextRange == nil else { return false }   // don't disturb IME composition
+            let ns = tv.attributedText.string as NSString
+            let caret = min(tv.selectedRange.location, ns.length)
+
+            // heading: the whole text so far is exactly a marker + trailing space ("## ")
+            if caret == ns.length, ns.range(of: "^#{1,3} $", options: .regularExpression).location == 0,
+               ns.length >= 2, ns.length <= 4 {
+                let level = ns.length - 1
+                let mut = NSMutableAttributedString(attributedString: tv.attributedText)
+                mut.deleteCharacters(in: NSRange(location: 0, length: ns.length))
+                tv.attributedText = mut
+                tv.selectedRange = NSRange(location: 0, length: 0)
+                model.onEditorText(RichEditor.serialize(tv.attributedText))
+                model.setFormat(id, "h\(level)")
+                return true
+            }
+
+            // named link: the text just before the caret ends with [label](url)
+            let before = ns.substring(to: caret) as NSString
+            let pattern = "\\[([^\\[\\]\\n]+)\\]\\((https?://[^\\s()]+|www\\.[^\\s()]+|mailto:[^\\s()]+)\\)$"
+            if let re = try? NSRegularExpression(pattern: pattern),
+               let match = re.firstMatch(in: before as String, range: NSRange(location: 0, length: before.length)) {
+                let label = before.substring(with: match.range(at: 1))
+                var url = before.substring(with: match.range(at: 2))
+                if url.lowercased().hasPrefix("www.") { url = "https://" + url }
+                var attrs = RichEditor.tokenAttributes()
+                attrs[.rzSource] = "<a href=\"\(RichEditor.escapeHTML(url))\">\(RichEditor.escapeHTML(label))</a>"
+                let token = NSMutableAttributedString(string: label, attributes: attrs)
+                token.append(NSAttributedString(string: " ", attributes: [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]))
+                let mut = NSMutableAttributedString(attributedString: tv.attributedText)
+                mut.replaceCharacters(in: match.range, with: token)
+                tv.attributedText = mut
+                tv.selectedRange = NSRange(location: match.range.location + token.length, length: 0)
+                model.onEditorText(RichEditor.serialize(tv.attributedText))
+                return true
+            }
+            return false
         }
 
         /// Re-colour typed `#tags` live (accent), in place, without touching link/ref tokens or
