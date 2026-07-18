@@ -210,13 +210,19 @@ public enum RichText {
         out.append(piece)
     }
 
-    /// The id of the top-level page whose title matches `name` (case-insensitive), else nil.
-    static func pageID(named name: String, doc: RDoc?) -> String? {
+    /// The id of the page whose title matches `name` (case-insensitive), else nil. Matches both
+    /// top-level pages (by their text) and daily notes (by their canonical date label, e.g.
+    /// "July 16th, 2026", derived from `cd` — daily notes live under the calendar, not at top level).
+    public static func pageID(named name: String, doc: RDoc?) -> String? {
         guard let doc else { return nil }
         let q = name.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return nil }
         for id in doc.nodes[doc.root]?.children ?? [] where doc.nodes[id]?.cal != "root" {
             if plainStrip(doc.nodes[id]?.text ?? "").trimmingCharacters(in: .whitespaces).lowercased() == q { return id }
+        }
+        for (id, node) in doc.nodes where node.cal == "day" {
+            let label = node.cd.flatMap(Journal.parseCd).map(Journal.label(for:)) ?? (node.text ?? "")
+            if label.trimmingCharacters(in: .whitespaces).lowercased() == q { return id }
         }
         return nil
     }

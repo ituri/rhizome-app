@@ -662,16 +662,13 @@ final class AppModel {
         return out
     }
 
-    /// The id of the top-level page whose title matches `name` (case-insensitive), creating one if none.
+    /// The id of the page whose title matches `name` (top-level page or daily note), creating a
+    /// top-level page only if no existing page/day matches — so journal links resolve to their day
+    /// instead of spawning a duplicate page.
     private func pageIdForName(_ name: String) -> String {
         let q = name.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return "" }
-        if let doc {
-            for id in doc.nodes[doc.root]?.children ?? [] where doc.nodes[id]?.cal != "root" {
-                let title = RichText.plain(doc.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
-                if title.lowercased() == q.lowercased() { return id }
-            }
-        }
+        if let existing = RichText.pageID(named: q, doc: doc) { return existing }
         return createPage(title: q)
     }
 
