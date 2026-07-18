@@ -43,6 +43,7 @@ struct OutlineRow: View {
     private var isTodo: Bool { node?.format == "todo" }
     private var isNumbered: Bool { node?.format == "number" }
     private var hasFiles: Bool { !(node?.files?.isEmpty ?? true) }
+    private var rowLineH: CGFloat { RichEditor.font().lineHeight }
 
     /// Image / file attachments rendered below the bullet's text.
     @ViewBuilder
@@ -57,23 +58,26 @@ struct OutlineRow: View {
                         onLongPress: { viewer = ViewerImage(url: url) }
                     )
                 } else if let url = model.fileURL(f.url) {
+                    // match the chip's height to the text line height so the bullet stays centred on it
                     HStack(spacing: 0) {
                         // tap the name/icon → open the file in QuickLook
                         Button { fileViewer = ViewerFile(url: url, name: f.name ?? "file") } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: f.symbol).font(.rz(16))
+                            HStack(spacing: 7) {
+                                Image(systemName: f.symbol).font(.rz(14))
                                 Text(f.name ?? "file").font(.rz(14)).lineLimit(1)
                             }
-                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .padding(.horizontal, 12)
+                            .frame(height: rowLineH, alignment: .center)
                             .foregroundStyle(Color.rzAccent)
-                            .background(Color.rzAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .background(Color.rzAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                         .layoutPriority(1)
                         .contextMenu { Button(role: .destructive) { model.removeFile(f.url, from: id) } label: { Label("Remove attachment", systemImage: "trash") } }
                         // tap past the chip (end of the line) → place the cursor and reveal the file name
                         Color.clear
-                            .frame(minWidth: 44, maxWidth: .infinity, minHeight: 34)
+                            .frame(minWidth: 44, maxWidth: .infinity)
+                            .frame(height: rowLineH)
                             .contentShape(Rectangle())
                             .onTapGesture { model.beginEdit(id) }
                     }
