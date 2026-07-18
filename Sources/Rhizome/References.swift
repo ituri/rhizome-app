@@ -48,9 +48,14 @@ struct ReferenceHeader: View {
 struct RefPageName: View {
     let name: String
     var body: some View {
-        Text("▾ " + (name.isEmpty ? "Untitled" : name))
-            .font(.rz(15, .semibold))
-            .foregroundStyle(Color.rzRefPage)
+        HStack(spacing: 4) {
+            Image(systemName: "arrowtriangle.down.fill")
+                .font(.rz(9))
+                .foregroundStyle(Color.rzInkFaint)
+            Text(name.isEmpty ? "Untitled" : name)
+                .font(.rz(15, .semibold))
+                .foregroundStyle(Color.rzRefPage)
+        }
     }
 }
 

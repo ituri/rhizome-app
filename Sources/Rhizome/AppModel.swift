@@ -641,7 +641,7 @@ final class AppModel {
             }
         }
         guard let coord = locationProvider.current else {
-            geoMessage = "Standort nicht verfügbar — kurz warten, dann erneut 📍"
+            geoMessage = "Standort nicht verfügbar — kurz warten, dann erneut versuchen"
             return
         }
         let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)

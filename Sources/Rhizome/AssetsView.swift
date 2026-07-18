@@ -173,10 +173,14 @@ struct AssetRow: View {
                     HStack(spacing: 6) {
                         ForEach(refs) { r in
                             NavigationLink(value: r.page ?? r.node) {
-                                Text("→ " + (r.pageTitle?.isEmpty == false ? r.pageTitle! : "note"))
-                                    .font(.rz(12)).foregroundStyle(Color.rzAccent).lineLimit(1)
-                                    .padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(Color.rzAccent.opacity(0.1), in: Capsule())
+                                HStack(spacing: 3) {
+                                    Image(systemName: "arrow.right").font(.rz(10))
+                                    Text(r.pageTitle?.isEmpty == false ? r.pageTitle! : "note")
+                                        .font(.rz(12)).lineLimit(1)
+                                }
+                                .foregroundStyle(Color.rzAccent)
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Color.rzAccent.opacity(0.1), in: Capsule())
                             }
                             .buttonStyle(.plain)
                         }
