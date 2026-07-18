@@ -627,10 +627,11 @@ final class AppModel {
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(text)])])
     }
 
-    /// On blur, turn the editor's raw markdown back into stored links: `[[Name]]` → an internal
-    /// `<a href="#/n/ID">` (resolving/creating the page), `[text](url)` → an external `<a href>`.
+    /// On blur, turn the editor's raw markdown back into stored HTML: `[[Name]]` → an internal
+    /// `<a href="#/n/ID">` (resolving/creating the page), `[text](url)` → an external `<a href>`,
+    /// and inline `**bold**` / `*italic*` / `` `code` `` / `~~strike~~` → `<b>`/`<i>`/`<code>`/`<s>`.
     /// `((id))` is already the stored form. Mirrors the web editorInputHook, but at blur time.
-    func resolveEditorLinks(_ html: String) -> String {
+    func resolveEditorMarkdown(_ html: String) -> String {
         var out = html
         // [text](url) → external link
         if let re = try? NSRegularExpression(pattern: #"\[([^\[\]\n]+)\]\((https?://[^\s()]+|www\.[^\s()]+|mailto:[^\s()]+)\)"#) {
@@ -659,6 +660,16 @@ final class AppModel {
             }
             result += ns.substring(from: last); out = result
         }
+        // inline formatting → HTML tags. Order matters: code first (backticks protect their
+        // content), then bold before italic so `**` isn't consumed by the single-`*` rule.
+        func replace(_ pattern: String, _ template: String) {
+            guard let re = try? NSRegularExpression(pattern: pattern) else { return }
+            out = re.stringByReplacingMatches(in: out, range: NSRange(location: 0, length: (out as NSString).length), withTemplate: template)
+        }
+        replace(#"`([^`\n]+?)`"#, "<code>$1</code>")
+        replace(#"\*\*([^\n]+?)\*\*"#, "<b>$1</b>")
+        replace(#"~~([^\n]+?)~~"#, "<s>$1</s>")
+        replace(#"(?<!\*)\*([^*\n]+?)\*(?!\*)"#, "<i>$1</i>")
         return out
     }
 

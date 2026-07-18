@@ -20,10 +20,11 @@ extension NSAttributedString.Key {
 }
 
 /// Bridges a Rhizome node's stored HTML source ⇄ an editable `NSAttributedString`. Raw-on-focus:
-/// while you edit a bullet, links show their MARKDOWN SOURCE — `[[Name]]` (internal), `[text](url)`
-/// (external), `((id))` (ref) — as ordinary editable text, so you can change them freely. On blur,
-/// `AppModel.resolveEditorLinks` turns them back into stored `<a href>` / `((id))`. Bold/italic/etc.
-/// stay rendered (plain runs with `.rzFormat`).
+/// while you edit a bullet, everything shows its MARKDOWN SOURCE as ordinary editable text — links
+/// `[[Name]]` / `[text](url)` / `((id))` and formatting `**bold**` / `*italic*` / `` `code` `` /
+/// `~~strike~~` — so you can change any of it freely. On blur, `AppModel.resolveEditorMarkdown`
+/// turns it all back into stored HTML (`<a href>`, `<b>`, `<i>`, `<code>`, `<s>`, `((id))`).
+/// Highlight/text colour are not markdown, so they stay rendered (spans → `.rzHighlight`/`.rzColor`).
 @MainActor
 enum RichEditor {
     // configurable from Settings (AppModel mirrors the persisted values into these)
@@ -84,12 +85,9 @@ enum RichEditor {
         let out = NSMutableAttributedString()
         let chars = Array(raw)
         var i = 0
-        var fmt = ""
+        let fmt = ""   // raw-on-focus: formatting is shown as literal markdown markers, not styled runs
         var hl = ""   // current highlight colour name (from <span class="hl-…">)
         var tc = ""   // current text colour name (from <span class="tc-…">)
-        func setFmt(_ c: Character, _ on: Bool) {
-            var set = Set(fmt); if on { set.insert(c) } else { set.remove(c) }; fmt = String(set.sorted())
-        }
         while i < chars.count {
             if chars[i] == "<", let close = nextIndex(">", chars, i) {
                 let tag = String(chars[(i + 1)..<close]).trimmingCharacters(in: .whitespaces).lowercased()
@@ -107,10 +105,11 @@ enum RichEditor {
                     continue
                 }
                 switch base {
-                case "b", "strong": setFmt("b", !closing)
-                case "i", "em": setFmt("i", !closing)
-                case "s", "strike", "del": setFmt("s", !closing)
-                case "code": setFmt("c", !closing)
+                // raw-on-focus: emit the markdown marker (same for open/close) as editable text
+                case "b", "strong": out.append(styled("**", fmt, hl: hl, tc: tc))
+                case "i", "em": out.append(styled("*", fmt, hl: hl, tc: tc))
+                case "s", "strike", "del": out.append(styled("~~", fmt, hl: hl, tc: tc))
+                case "code": out.append(styled("`", fmt, hl: hl, tc: tc))
                 case "span":
                     if closing { hl = ""; tc = "" }
                     else { hl = Highlight.inClass(tag)?.rawValue ?? hl; tc = TextColor.inClass(tag)?.rawValue ?? tc }
@@ -371,32 +370,8 @@ struct RichTextEditor: UIViewRepresentable {
                 }
             }
 
-            // (raw-on-focus: [text](url) is left as raw editable syntax, resolved to <a href> on blur)
-            let before = ns.substring(to: caret) as NSString
-
-            // inline: **bold** / *italic* / `code` → an editable styled run (a plain formatted run,
-            // NOT an atomic token — the cursor can go back in and change it later)
-            let inlineRules: [(fmt: String, pattern: String)] = [
-                ("b", "\\*\\*([^*\\n]+?)\\*\\*$"),
-                ("c", "`([^`\\n]+?)`$"),
-                ("i", "(?<!\\*)\\*([^*\\n]+?)\\*$"),
-            ]
-            for rule in inlineRules {
-                guard let re = try? NSRegularExpression(pattern: rule.pattern),
-                      let match = re.firstMatch(in: before as String, range: NSRange(location: 0, length: before.length)) else { continue }
-                let content = before.substring(with: match.range(at: 1))
-                if content.trimmingCharacters(in: .whitespaces).isEmpty { continue }
-                let run = NSAttributedString(string: content, attributes: [
-                    .font: RichEditor.font(rule.fmt), .foregroundColor: RichEditor.ink, .rzFormat: rule.fmt,
-                ])
-                let mut = NSMutableAttributedString(attributedString: tv.attributedText)
-                mut.replaceCharacters(in: match.range, with: run)
-                tv.attributedText = mut
-                tv.selectedRange = NSRange(location: match.range.location + run.length, length: 0)
-                tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]   // leave the styled run
-                model.onEditorText(RichEditor.serialize(tv.attributedText))
-                return true
-            }
+            // raw-on-focus: inline markdown (**bold** / *italic* / `code` / ~~strike~~) and
+            // [text](url) are left as raw editable syntax, resolved to HTML on blur.
             return false
         }
 
@@ -445,7 +420,7 @@ struct RichTextEditor: UIViewRepresentable {
             // raw-on-focus: resolve THIS bullet's raw markdown ([[Name]] / [text](url)) back to stored
             // links and persist it by id — even when another row already took over (editingID moved on),
             // so leaving a bullet by tapping another one still saves the resolved link.
-            model.persistText(id, model.resolveEditorLinks(RichEditor.serialize(tv.attributedText)))
+            model.persistText(id, model.resolveEditorMarkdown(RichEditor.serialize(tv.attributedText)))
             guard model.editingID == id else { return } // another row took over → transition, not a blur
             model.blurred()
         }
@@ -520,26 +495,26 @@ struct RichTextEditor: UIViewRepresentable {
         }
 
         /// Toggle an inline format ("b"/"i"/"s"/"c") over the current selection.
+        /// raw-on-focus: wrap the selection in the markdown marker (**bold**, *italic*, `code`,
+        /// ~~strike~~) as editable text; it's resolved to <b>/<i>/… on blur. The selected content
+        /// keeps its own attributes (highlight/colour) — only the markers are inserted around it.
         func applyInline(_ ch: String) {
-            guard let tv = textView, tv.selectedRange.length > 0, let c = ch.first else { return }
+            guard let tv = textView, tv.selectedRange.length > 0 else { return }
+            let marker: String
+            switch ch {
+            case "b": marker = "**"
+            case "i": marker = "*"
+            case "s": marker = "~~"
+            case "c": marker = "`"
+            default: return
+            }
             let sel = tv.selectedRange
             let m = NSMutableAttributedString(attributedString: tv.attributedText)
-            let startFmt = (m.attribute(.rzFormat, at: sel.location, effectiveRange: nil) as? String) ?? ""
-            let adding = !startFmt.contains(c)
-            var edits: [(NSRange, String)] = []
-            m.enumerateAttributes(in: sel, options: []) { attrs, range, _ in
-                var set = Set((attrs[.rzFormat] as? String) ?? "")
-                if adding { set.insert(c) } else { set.remove(c) }
-                edits.append((range, String(set.sorted())))
-            }
-            for (range, fmt) in edits {
-                if fmt.isEmpty { m.removeAttribute(.rzFormat, range: range) } else { m.addAttribute(.rzFormat, value: fmt, range: range) }
-                m.addAttribute(.font, value: RichEditor.font(fmt), range: range)
-                if fmt.contains("s") { m.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
-                else { m.removeAttribute(.strikethroughStyle, range: range) }
-            }
+            m.insert(RichEditor.plainRun(marker), at: sel.location + sel.length)   // closing first
+            m.insert(RichEditor.plainRun(marker), at: sel.location)                // then opening
             tv.attributedText = m
-            tv.selectedRange = sel
+            tv.selectedRange = NSRange(location: sel.location + marker.count, length: sel.length)  // keep inner selected
+            tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
             textViewDidChange(tv)
         }
 
