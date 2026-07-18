@@ -283,10 +283,14 @@ final class AppModel {
         defer { busy = false }
         do {
             let response = try await api.doc(graphID: graphID)
-            doc = response.doc
             version = response.version
+            LocalStore.save(response, "doc-\(graphID).json")   // cache the clean server doc; the outbox re-applies on load
+            // replay un-acked local edits onto the fresh server doc so they stay visible
+            // (the authoritative merge still happens server-side via the idempotent ops)
+            var merged = response.doc
+            if !outbox.isEmpty { merged.apply(outbox) }
+            doc = merged
             reindex()
-            LocalStore.save(response, "doc-\(graphID).json")
             isOffline = false
             ensureToday()   // create today's journal day if the server doesn't have it yet
             drain()   // network is up — flush any edits queued while offline
@@ -295,8 +299,10 @@ final class AppModel {
             // cold offline boot: fall back to the cached doc (don't clobber a doc
             // we already have loaded with unsynced local edits)
             if doc == nil, let cached = LocalStore.load(RDocResponse.self, "doc-\(graphID).json") {
-                doc = cached.doc
                 version = cached.version
+                var merged = cached.doc
+                if !outbox.isEmpty { merged.apply(outbox) }   // show pending offline edits on cold boot too
+                doc = merged
                 reindex()
                 ensureToday()   // offline cold boot on a new day: queue today's day for later sync
             }

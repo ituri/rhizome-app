@@ -1,12 +1,12 @@
 import Foundation
 
-/// Glue that lets the Share Extension reuse the main app's signed-in session. The app mirrors
-/// its `rz_session` cookie value + server URL into a shared App Group `UserDefaults`; the
-/// extension reads them and POSTs to `/api/capture` with an explicit `Cookie` header — no API
-/// token, and no reliance on the (flakier) shared HTTPCookieStorage.
+/// Glue that lets the Share Extension reuse the main app's signed-in session. The server URL and
+/// prefs live in a shared App Group `UserDefaults`; the (secret) `rz_session` cookie value lives
+/// in the shared Keychain access group. The extension reads them and POSTs to `/api/capture`
+/// with an explicit `Cookie` header — no API token, no reliance on the flakier HTTPCookieStorage.
 ///
-/// Requires the `com.apple.security.application-groups` entitlement (a paid Apple Developer
-/// team) on both the app and the extension.
+/// Requires the `com.apple.security.application-groups` and `keychain-access-groups` entitlements
+/// (a paid Apple Developer team) on both the app and the extension.
 public enum AppGroup {
     public static let id = "group.org.syslinx.rhizome"
 
@@ -20,9 +20,9 @@ public enum AppGroup {
         return url
     }
 
-    /// The signed-in `rz_session` cookie value shared from the app (nil if not signed in).
+    /// The signed-in `rz_session` cookie value, from the shared Keychain (nil if not signed in).
     public static var sessionCookie: String? {
-        let v = defaults?.string(forKey: "sessionCookie")
+        let v = Keychain.get("rz_session")
         return (v?.isEmpty ?? true) ? nil : v
     }
 
@@ -42,10 +42,14 @@ public enum AppGroup {
         setServerURL(url.absoluteString)
         let cookies = HTTPCookieStorage.shared.cookies(for: url) ?? []
         if let c = cookies.first(where: { $0.name == "rz_session" }) {
-            defaults?.set(c.value, forKey: "sessionCookie")
+            Keychain.set(c.value, for: "rz_session")
         }
+        defaults?.removeObject(forKey: "sessionCookie") // scrub the old plaintext mirror on upgrade
     }
 
     /// Drop the shared session on sign-out so the extension can no longer post.
-    public static func clearSession() { defaults?.removeObject(forKey: "sessionCookie") }
+    public static func clearSession() {
+        Keychain.set(nil, for: "rz_session")
+        defaults?.removeObject(forKey: "sessionCookie")
+    }
 }

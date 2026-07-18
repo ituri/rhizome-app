@@ -89,3 +89,95 @@ public struct Clock: Sendable {
         String((0..<12).map { _ in Self.alphabet.randomElement()! })
     }
 }
+
+// MARK: - Optimistic replay
+
+extension RNode {
+    /// Apply an op's `data`/`patch` scalar fields onto this node (mirrors the web client's
+    /// `applyRemoteOps`). Unknown keys are ignored; `files` is left to a full reload.
+    mutating func applyFields(_ fields: [String: JSONValue]) {
+        for (k, v) in fields {
+            switch k {
+            case "text": if case let .string(s) = v { text = s }
+            case "note": if case let .string(s) = v { note = s } else if case .null = v { note = nil }
+            case "done": if case let .bool(b) = v { done = b }
+            case "collapsed": if case let .bool(b) = v { collapsed = b }
+            case "format": if case let .string(s) = v { format = s }
+            case "cal": if case let .string(s) = v { cal = s }
+            case "cd": if case let .string(s) = v { cd = s }
+            case "cm": if case let .int(i) = v { cm = i }
+            case "cy": if case let .int(i) = v { cy = i }
+            case "children":
+                if case let .array(a) = v { children = a.compactMap { if case let .string(s) = $0 { return s } else { return nil } } }
+            case "m": if case let .double(d) = v { m = d } else if case let .int(i) = v { m = Double(i) }
+            case "c": if case let .double(d) = v { c = d } else if case let .int(i) = v { c = Double(i) }
+            default: break
+            }
+        }
+    }
+
+    mutating func unset(_ key: String) {
+        switch key {
+        case "format": format = nil
+        case "note": note = nil
+        case "done": done = nil
+        case "collapsed": collapsed = nil
+        default: break
+        }
+    }
+}
+
+extension RDoc {
+    /// Replay queued (un-acked) ops onto a freshly fetched server doc so the user's pending
+    /// offline edits stay visible instead of being clobbered by the reload. Idempotent and
+    /// tolerant of missing nodes — the authoritative merge still happens server-side.
+    public mutating func apply(_ ops: [Op]) {
+        for op in ops {
+            switch op.kind {
+            case "insert":
+                if nodes[op.node] != nil { break }
+                var n = RNode()
+                if let data = op.data { n.applyFields(data) }
+                if n.children == nil { n.children = [] }
+                nodes[op.node] = n
+                insert(op.node, under: op.parent ?? root, at: op.ord)
+            case "update":
+                guard nodes[op.node] != nil else { break }
+                if let patch = op.patch { nodes[op.node]!.applyFields(patch) }
+                if let unset = op.unset { for k in unset { nodes[op.node]!.unset(k) } }
+            case "move":
+                guard nodes[op.node] != nil, let parent = op.parent, nodes[parent] != nil else { break }
+                detach(op.node)
+                insert(op.node, under: parent, at: op.ord)
+            case "delete":
+                for id in subtreeIDs(op.node) { nodes[id] = nil }
+                detach(op.node)
+            default: break
+            }
+        }
+    }
+
+    private mutating func insert(_ id: String, under parent: String, at ord: Int?) {
+        guard nodes[parent] != nil else { return }
+        var kids = nodes[parent]!.children ?? []
+        kids.removeAll { $0 == id }               // never duplicate an id among siblings
+        let idx = max(0, min(ord ?? kids.count, kids.count))
+        kids.insert(id, at: idx)
+        nodes[parent]!.children = kids
+    }
+
+    private mutating func detach(_ id: String) {
+        for pid in Array(nodes.keys) where nodes[pid]?.children?.contains(id) == true {
+            nodes[pid]!.children!.removeAll { $0 == id }
+        }
+    }
+
+    private func subtreeIDs(_ id: String) -> [String] {
+        var out = [id], i = 0
+        while i < out.count {
+            if let kids = nodes[out[i]]?.children { out.append(contentsOf: kids) }
+            i += 1
+        }
+        return out
+    }
+}

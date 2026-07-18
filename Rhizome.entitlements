@@ -7,5 +7,10 @@
     <array>
         <string>group.org.syslinx.rhizome</string>
     </array>
+    <!-- Shared Keychain group holding the (secret) session cookie; same entry in the extension. -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)org.syslinx.rhizome</string>
+    </array>
 </dict>
 </plist>
