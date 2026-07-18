@@ -53,6 +53,17 @@ public struct RFile: Codable, Sendable {
         self.url = url; self.name = name; self.type = type; self.size = size
     }
     public var isImage: Bool { looksLikeImage(name ?? url) }
+    public var isPDF: Bool { (name ?? url).lowercased().hasSuffix(".pdf") || (type ?? "").contains("pdf") }
+    /// An SF Symbol representing the file kind (for the non-image attachment chip).
+    public var symbol: String {
+        let n = (name ?? url).lowercased()
+        if isPDF { return "doc.richtext" }
+        if n.hasSuffix(".zip") || n.hasSuffix(".tar") || n.hasSuffix(".gz") || n.hasSuffix(".7z") { return "doc.zipper" }
+        if n.hasSuffix(".txt") || n.hasSuffix(".md") || n.hasSuffix(".rtf") { return "doc.plaintext" }
+        if n.hasSuffix(".mp3") || n.hasSuffix(".m4a") || n.hasSuffix(".wav") { return "waveform" }
+        if n.hasSuffix(".mp4") || n.hasSuffix(".mov") || n.hasSuffix(".m4v") { return "film" }
+        return "doc"
+    }
 }
 
 /// One saved version in a page's history.

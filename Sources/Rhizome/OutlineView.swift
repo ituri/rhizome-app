@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UIKit
+import UniformTypeIdentifiers
 import RhizomeKit
 
 /// One flattened, visible outline row (a node plus its indentation depth).
@@ -33,7 +34,8 @@ struct OutlineRow: View {
     let id: String
     let node: RNode?
 
-    @State private var viewer: ViewerImage?   // the attachment shown full-screen
+    @State private var viewer: ViewerImage?   // the image attachment shown full-screen
+    @State private var fileViewer: ViewerFile?   // the non-image attachment (PDF/doc) shown in QuickLook
 
     private var hasChildren: Bool { !(node?.children?.isEmpty ?? true) }
     private var isCollapsed: Bool { node?.collapsed ?? false }
@@ -55,9 +57,19 @@ struct OutlineRow: View {
                         onLongPress: { viewer = ViewerImage(url: url) }
                     )
                 } else if let url = model.fileURL(f.url) {
-                    Link(destination: url) {
-                        Label(f.name ?? "file", systemImage: "paperclip").font(.rz(14))
+                    Button { fileViewer = ViewerFile(url: url, name: f.name ?? "file") } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: f.symbol).font(.rz(16))
+                            Text(f.name ?? "file").font(.rz(14)).lineLimit(1)
+                            Spacer(minLength: 0)
+                            Image(systemName: "eye").font(.rz(12)).foregroundStyle(Color.rzInkFaint)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 9)
+                        .foregroundStyle(Color.rzAccent)
+                        .background(Color.rzAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
                     }
+                    .buttonStyle(.plain)
+                    .contextMenu { Button(role: .destructive) { model.removeFile(f.url, from: id) } label: { Label("Remove attachment", systemImage: "trash") } }
                 }
             }
         }
@@ -179,6 +191,7 @@ struct OutlineRow: View {
             }
         }
         .fullScreenCover(item: $viewer) { v in ImageViewer(url: v.url) }
+        .fullScreenCover(item: $fileViewer) { v in FilePreview(remoteURL: v.url, name: v.name) }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button { model.toggleDone(id) } label: {
                 Label("Done", systemImage: "checkmark.circle")
@@ -204,6 +217,7 @@ struct KeyboardAccessory: View {
     @State private var showLibrary = false
     @State private var pickerItem: PhotosPickerItem?
     @State private var showAssetPicker = false
+    @State private var showFileImporter = false
     @State private var attachTarget: String?   // node to attach to, captured before the picker steals focus
     @State private var showLinkAlert = false
     @State private var linkText = ""
@@ -215,11 +229,16 @@ struct KeyboardAccessory: View {
         Group {
             if model.editingID != nil { bar }
         }
-        .confirmationDialog("Add image", isPresented: $showSourceDialog, titleVisibility: .visible) {
+        .confirmationDialog("Add attachment", isPresented: $showSourceDialog, titleVisibility: .visible) {
             Button("Take Photo") { showCamera = true }
             Button("Choose from Library") { showLibrary = true }
+            Button("Attach a File…") { showFileImporter = true }
             Button("From uploaded files") { showAssetPicker = true }
             Button("Cancel", role: .cancel) {}
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf, .image, .plainText, .item], allowsMultipleSelection: false) { result in
+            guard let target = attachTarget, case let .success(urls) = result, let picked = urls.first else { return }
+            Task { await attachDocument(picked, to: target) }
         }
         .sheet(isPresented: $showAssetPicker) {
             AssetPickerSheet { asset in if let id = attachTarget { model.attachAsset(asset, to: id) } }
@@ -262,6 +281,16 @@ struct KeyboardAccessory: View {
         f.dateFormat = "yyyy-MM-dd HH.mm.ss"
         let name = "Photo \(f.string(from: Date())).jpg"
         Task { await model.attachFile(data, name: name, contentType: "image/jpeg", to: id) }
+    }
+
+    /// Upload a picked document (PDF, text, any file) as-is — no downscaling, real name + mime type.
+    private func attachDocument(_ url: URL, to id: String) async {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { model.notice = "Couldn't read that file."; return }
+        let name = url.lastPathComponent
+        let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        await model.attachFile(data, name: name, contentType: type, to: id)
     }
 
     private func scaledDown(_ image: UIImage, percent: Double) -> UIImage {

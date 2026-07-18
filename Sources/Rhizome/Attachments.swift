@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import QuickLook
 
 /// A tiny in-memory cache so an attachment loads once, not on every List re-render.
 @MainActor
@@ -10,6 +11,83 @@ enum ImageCache {
         guard let (data, _) = try? await URLSession.shared.data(from: url), let img = UIImage(data: data) else { return nil }
         store[url] = img
         return img
+    }
+}
+
+/// Downloads a file attachment via the authenticated session (URLSession.shared carries the
+/// rz_session cookie) to a temp file, so QuickLook — which needs a LOCAL file url — can preview
+/// it. Reusing the original filename lets QuickLook infer the type + show the name.
+@MainActor
+enum FileCache {
+    private static var store: [URL: URL] = [:]
+    static func download(_ url: URL, name: String) async -> URL? {
+        if let local = store[url], FileManager.default.fileExists(atPath: local.path) { return local }
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("rz-preview", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dest = dir.appendingPathComponent(name.isEmpty ? "file" : name)
+        do { try data.write(to: dest, options: .atomic); store[url] = dest; return dest }
+        catch { return nil }
+    }
+}
+
+/// A remote file to preview full-screen (drives `.fullScreenCover(item:)`).
+struct ViewerFile: Identifiable {
+    let id = UUID()
+    let url: URL
+    let name: String
+}
+
+/// Downloads a non-image attachment (PDF, doc, …) and previews it in QuickLook.
+struct FilePreview: View {
+    let remoteURL: URL
+    let name: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var localURL: URL?
+    @State private var failed = false
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground).ignoresSafeArea()
+            if let localURL {
+                QuickLookView(url: localURL).ignoresSafeArea()
+            } else if failed {
+                VStack(spacing: 14) {
+                    Image(systemName: "doc.questionmark").font(.system(size: 44)).foregroundStyle(.secondary)
+                    Text("Couldn't open this file.").foregroundStyle(.secondary)
+                    Button("Close") { dismiss() }
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 30))
+                    .symbolRenderingMode(.palette).foregroundStyle(.primary, Color(.systemGray5))
+            }
+            .padding()
+        }
+        .task { localURL = await FileCache.download(remoteURL, name: name); if localURL == nil { failed = true } }
+    }
+}
+
+/// SwiftUI wrapper around QLPreviewController (previews PDFs, docs, images, and more).
+struct QuickLookView: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let c = QLPreviewController()
+        c.dataSource = context.coordinator
+        return c
+    }
+    func updateUIViewController(_ controller: QLPreviewController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        let url: URL
+        init(url: URL) { self.url = url }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
     }
 }
 
