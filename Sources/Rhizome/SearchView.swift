@@ -40,34 +40,42 @@ struct SearchView: View {
         }
     }
 
-    /// One result row — a real page is highlighted (accent icon, semibold, tinted background,
-    /// a "Page" chip) and opens itself; a mention shows its text + breadcrumb and opens its parent.
+    /// A small type chip — accent for pages, muted grey for mentions.
+    private func chip(_ label: String, accent: Bool) -> some View {
+        let color = accent ? Color.rzAccent : Color.rzInkFaint
+        return Text(label)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(color.opacity(accent ? 0.14 : 0.12), in: Capsule())
+    }
+
+    /// One result row: a real page is highlighted (semibold, tinted background, an accent
+    /// "Page"/"Journal" chip) and opens itself; a mention shows its text + breadcrumb with a
+    /// muted "Mention" chip and opens its parent.
     @ViewBuilder
     private func row(_ id: String) -> some View {
         let page = model.isPage(id)
         NavigationLink(value: page ? id : (model.parentOf(id) ?? id)) {
             if page {
-                HStack(spacing: 10) {
-                    Image(systemName: model.doc?.nodes[id]?.cal == "day" ? "calendar" : "doc.text.fill")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color.rzAccent)
+                HStack(spacing: 8) {
                     Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
                         .font(.rz(16.5, .semibold))
                         .foregroundStyle(Color.rzInk)
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    Text("Page")
-                        .font(.caption2)
-                        .foregroundStyle(Color.rzAccent)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Color.rzAccent.opacity(0.14), in: Capsule())
+                    chip(model.doc?.nodes[id]?.cal == "day" ? "Journal" : "Page", accent: true)
                 }
                 .padding(.vertical, 3)
             } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
-                        .font(.rz(16.5))
-                        .lineLimit(2)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
+                            .font(.rz(16.5))
+                            .lineLimit(2)
+                        Spacer(minLength: 8)
+                        chip("Mention", accent: false)
+                    }
                     let trail = model.breadcrumb(of: id)
                     if !trail.isEmpty {
                         Text(trail)

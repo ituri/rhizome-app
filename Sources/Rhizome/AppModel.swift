@@ -1232,7 +1232,7 @@ final class AppModel {
             return
         }
         let calRootID = doc.nodes.first(where: { $0.value.cal == "root" })?.key
-            ?? insertCalNode(parent: root, cal: "root", text: "📅 Calendar")
+            ?? insertCalNode(parent: root, cal: "root", text: "Calendar")
         let yearID = childCalNode(of: calRootID, cal: "year", match: { $0.cy == year }, fallbackText: "\(year)")
             ?? insertCalNode(parent: calRootID, cal: "year", text: "\(year)", cy: year)
         let monthID = childCalNode(of: yearID, cal: "month", match: { $0.cm == month - 1 }, fallbackText: monthName)
