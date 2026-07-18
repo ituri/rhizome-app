@@ -327,6 +327,7 @@ final class AppModel {
     var slashCommands: [SlashCommand] = []       // active `/` slash-menu matches
     var locating = false                          // geo button is waiting for a fix
     var geoMessage: String?                       // transient status/diagnostic shown after a geo tap
+    var notice: String?                           // generic transient alert (e.g. an upload/quota error)
     @ObservationIgnored private let locationProvider = LocationProvider()
     private var flushTask: Task<Void, Never>?
 
@@ -961,7 +962,7 @@ final class AppModel {
             let file = try await api.upload(data, name: name, contentType: contentType)
             applyFile(file, to: id)
         } catch {
-            errorMessage = String(describing: error)
+            notice = String(describing: error)   // surface the reason (e.g. a storage-quota block)
         }
     }
 

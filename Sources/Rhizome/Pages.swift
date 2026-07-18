@@ -206,5 +206,6 @@ struct PageView: View {
         .sheet(isPresented: $showHistory) { PageHistoryView(pageID: model.historyPageOf(pageID) ?? pageID) }
         .safeAreaInset(edge: .bottom, spacing: 0) { KeyboardAccessory(model: model) }
         .geoAlert(model)
+        .noticeAlert(model)
     }
 }

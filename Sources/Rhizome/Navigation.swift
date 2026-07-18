@@ -16,6 +16,18 @@ extension View {
         } message: { Text($0) }
     }
 
+    /// A generic transient alert (upload/quota errors, …), title-neutral so it fits any context.
+    @MainActor
+    func noticeAlert(_ model: AppModel) -> some View {
+        alert(
+            "Rhizome",
+            isPresented: Binding(get: { model.notice != nil }, set: { if !$0 { model.notice = nil } }),
+            presenting: model.notice
+        ) { _ in
+            Button("OK", role: .cancel) { model.notice = nil }
+        } message: { Text($0) }
+    }
+
     /// Intercept taps on internal `rhizome://n/<id>` links and push the target
     /// page onto the stack instead of trying to open a URL.
     @MainActor

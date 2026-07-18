@@ -87,6 +87,7 @@ struct JournalView: View {
             .refreshable { await model.loadDoc() }
             .safeAreaInset(edge: .bottom, spacing: 0) { KeyboardAccessory(model: model) }
             .geoAlert(model)
+        .noticeAlert(model)
         }
         .handleNodeLinks(path: $path, model: model)
     }
