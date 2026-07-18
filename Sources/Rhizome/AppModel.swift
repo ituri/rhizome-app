@@ -1304,6 +1304,12 @@ final class AppModel {
     /// (Sent concurrently, a text update can reach the server before the node exists
     /// and get dropped, which is why structure synced but text didn't.)
     private func send(_ ops: [Op]) {
+        // stamp the touched nodes' modified time locally (the server does the same) so
+        // "last edited" in Pages updates immediately, not only after a reload
+        let now = Date().timeIntervalSince1970 * 1000
+        for op in ops where op.kind == "insert" || op.kind == "update" || op.kind == "move" {
+            doc?.nodes[op.node]?.m = now
+        }
         outbox.append(contentsOf: ops)
         persistOutbox()
         drain()
