@@ -618,6 +618,54 @@ final class AppModel {
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(html)])])
     }
 
+    /// On blur, turn the editor's raw markdown back into stored links: `[[Name]]` → an internal
+    /// `<a href="#/n/ID">` (resolving/creating the page), `[text](url)` → an external `<a href>`.
+    /// `((id))` is already the stored form. Mirrors the web editorInputHook, but at blur time.
+    func resolveEditorLinks(_ html: String) -> String {
+        var out = html
+        // [text](url) → external link
+        if let re = try? NSRegularExpression(pattern: #"\[([^\[\]\n]+)\]\((https?://[^\s()]+|www\.[^\s()]+|mailto:[^\s()]+)\)"#) {
+            let ns = out as NSString
+            var result = ""; var last = 0
+            for m in re.matches(in: out, range: NSRange(location: 0, length: ns.length)) {
+                result += ns.substring(with: NSRange(location: last, length: m.range.location - last))
+                let text = ns.substring(with: m.range(at: 1))
+                var url = ns.substring(with: m.range(at: 2))
+                if url.lowercased().hasPrefix("www.") { url = "https://" + url }
+                result += "<a href=\"\(Self.escapeHTMLAttr(url))\" rel=\"noopener\">\(text)</a>"
+                last = m.range.location + m.range.length
+            }
+            result += ns.substring(from: last); out = result
+        }
+        // [[Name]] → internal link (find or create the page)
+        if let re = try? NSRegularExpression(pattern: #"\[\[([^\[\]\n]+)\]\]"#) {
+            let ns = out as NSString
+            var result = ""; var last = 0
+            for m in re.matches(in: out, range: NSRange(location: 0, length: ns.length)) {
+                result += ns.substring(with: NSRange(location: last, length: m.range.location - last))
+                let name = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+                let id = pageIdForName(name)
+                result += id.isEmpty ? "[[\(name)]]" : "<a href=\"#/n/\(id)\" rel=\"noopener\">\(name)</a>"
+                last = m.range.location + m.range.length
+            }
+            result += ns.substring(from: last); out = result
+        }
+        return out
+    }
+
+    /// The id of the top-level page whose title matches `name` (case-insensitive), creating one if none.
+    private func pageIdForName(_ name: String) -> String {
+        let q = name.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return "" }
+        if let doc {
+            for id in doc.nodes[doc.root]?.children ?? [] where doc.nodes[id]?.cal == nil {
+                let title = RichText.plain(doc.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+                if title.lowercased() == q.lowercased() { return id }
+            }
+        }
+        return createPage(title: q)
+    }
+
     private func createPage(title: String) -> String {
         guard let root = doc?.root else { return "" }
         let id = clock.newID()
@@ -680,6 +728,10 @@ final class AppModel {
         s.replacingOccurrences(of: "&", with: "&amp;")
          .replacingOccurrences(of: "<", with: "&lt;")
          .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    private static func escapeHTMLAttr(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "\"", with: "&quot;")
     }
 
     // MARK: - Geo (reverse geocoding + coordinates, mirroring the web app)
