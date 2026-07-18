@@ -140,6 +140,10 @@ struct PageView: View {
     @Environment(AppModel.self) private var model
     let pageID: String
     @State private var showHistory = false
+    @State private var showRename = false
+    @State private var renameDraft = ""
+
+    private var pageTitle: String { RichText.plain(model.doc?.nodes[pageID]?.text ?? "Page", doc: model.doc) }
 
     var body: some View {
         Group {
@@ -190,9 +194,21 @@ struct PageView: View {
                 ContentUnavailableView("Page not found", systemImage: "questionmark.folder")
             }
         }
-        .navigationTitle(RichText.plain(model.doc?.nodes[pageID]?.text ?? "Page", doc: model.doc))
+        .navigationTitle(pageTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // tap the page title to rename it
+            ToolbarItem(placement: .principal) {
+                Button {
+                    renameDraft = pageTitle
+                    showRename = true
+                } label: {
+                    Text(pageTitle).font(.headline).lineLimit(1).foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Page title: \(pageTitle)")
+                .accessibilityHint("Tap to rename this page")
+            }
             ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showHistory = true } label: { Image(systemName: "clock.arrow.circlepath") }
@@ -205,6 +221,11 @@ struct PageView: View {
         }
         .sheet(isPresented: $showHistory) { PageHistoryView(pageID: model.historyPageOf(pageID) ?? pageID) }
         .safeAreaInset(edge: .bottom, spacing: 0) { KeyboardAccessory(model: model) }
+        .alert("Rename page", isPresented: $showRename) {
+            TextField("Title", text: $renameDraft)
+            Button("Rename") { model.renamePage(pageID, to: renameDraft) }
+            Button("Cancel", role: .cancel) {}
+        }
         .geoAlert(model)
         .noticeAlert(model)
     }
