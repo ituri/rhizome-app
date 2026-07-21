@@ -116,7 +116,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Behaviour")
                 } footer: {
-                    Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices. With “Resolve location address” on, a new location tag is reverse-geocoded to its street address; off keeps the raw coordinates. Long-press the location button to do the opposite just once.")
+                    Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices. With “Resolve location address” on, a tap of the location button reverse-geocodes a new tag to its street address; off keeps the raw coordinates. Long-press the button to choose either way for a single tag.")
                 }
 
                 // ---- Uploads ----

@@ -405,25 +405,23 @@ struct KeyboardAccessory: View {
         case .link:
             Button { model.suppressBlur = true; linkText = ""; showLinkAlert = true } label: { Image(systemName: tool.icon) }
         case .geo:
-            // Tap = your default (Settings → resolve address); long-press inverts it for one tag.
-            // ExclusiveGesture (long-press first) fires exactly ONE branch — combining a bare
-            // .onTapGesture with .onLongPressGesture routes every press to the long-press closure.
-            Image(systemName: model.locating ? "location.fill" : "location")
-                .foregroundStyle(Color.rzAccent)
-                .frame(minWidth: 30, minHeight: 30)
-                .contentShape(Rectangle())
-                .gesture(
-                    ExclusiveGesture(LongPressGesture(minimumDuration: 0.5), TapGesture())
-                        .onEnded { which in
-                            switch which {
-                            case .first:    // held → invert the default for this one tag
-                                Haptics.impact(.medium)
-                                Task { await model.insertGeoLink(resolveAddress: !model.geoResolveAddress) }
-                            case .second:   // quick tap → your default
-                                Task { await model.insertGeoLink(resolveAddress: model.geoResolveAddress) }
-                            }
-                        }
-                )
+            // A Menu with a primaryAction, like the colour pickers above — reliable in this
+            // horizontal ScrollView (a bare Image + custom .gesture fights the scroll pan
+            // recogniser, so every press routed to one branch). Tap runs your default;
+            // long-press opens the menu to pick explicitly for this one tag.
+            Menu {
+                Button {
+                    Task { await model.insertGeoLink(resolveAddress: true) }
+                } label: { Label("Resolve address", systemImage: "mappin.and.ellipse") }
+                Button {
+                    Task { await model.insertGeoLink(resolveAddress: false) }
+                } label: { Label("Coordinates only", systemImage: "location") }
+            } label: {
+                Image(systemName: model.locating ? "location.fill" : "location")
+                    .foregroundStyle(Color.rzAccent)
+            } primaryAction: {
+                Task { await model.insertGeoLink(resolveAddress: model.geoResolveAddress) }
+            }
         case .todo:
             Button { runTool(tool) } label: {
                 Image(systemName: editingFormat == "todo" ? "checkmark.circle.fill" : "checkmark.circle")
