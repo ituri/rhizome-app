@@ -406,17 +406,24 @@ struct KeyboardAccessory: View {
             Button { model.suppressBlur = true; linkText = ""; showLinkAlert = true } label: { Image(systemName: tool.icon) }
         case .geo:
             // Tap = your default (Settings → resolve address); long-press inverts it for one tag.
+            // ExclusiveGesture (long-press first) fires exactly ONE branch — combining a bare
+            // .onTapGesture with .onLongPressGesture routes every press to the long-press closure.
             Image(systemName: model.locating ? "location.fill" : "location")
                 .foregroundStyle(Color.rzAccent)
                 .frame(minWidth: 30, minHeight: 30)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    Task { await model.insertGeoLink(resolveAddress: model.geoResolveAddress) }
-                }
-                .onLongPressGesture {
-                    Haptics.impact(.medium)   // a distinct buzz signals the inverted, one-off mode
-                    Task { await model.insertGeoLink(resolveAddress: !model.geoResolveAddress) }
-                }
+                .gesture(
+                    ExclusiveGesture(LongPressGesture(minimumDuration: 0.5), TapGesture())
+                        .onEnded { which in
+                            switch which {
+                            case .first:    // held → invert the default for this one tag
+                                Haptics.impact(.medium)
+                                Task { await model.insertGeoLink(resolveAddress: !model.geoResolveAddress) }
+                            case .second:   // quick tap → your default
+                                Task { await model.insertGeoLink(resolveAddress: model.geoResolveAddress) }
+                            }
+                        }
+                )
         case .todo:
             Button { runTool(tool) } label: {
                 Image(systemName: editingFormat == "todo" ? "checkmark.circle.fill" : "checkmark.circle")

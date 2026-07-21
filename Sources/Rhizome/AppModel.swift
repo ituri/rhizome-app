@@ -713,9 +713,16 @@ final class AppModel {
             doc.nodes[$0]?.cal == nil &&
             RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces) == title
         }) {
-            if let geo, self.doc?.nodes[existing]?.geo != geo {
+            // Reconcile the flag to the caller's intent — a warm fix reuses the same coordinate
+            // page back-to-back, so a "resolve" tap must CLEAR a prior "raw" flag (else the
+            // geocode guard blocks it), and a "raw" tap must set it. Latest intent wins.
+            if self.doc?.nodes[existing]?.geo != geo {
                 self.doc?.nodes[existing]?.geo = geo
-                send([Op(kind: "update", node: existing, hlc: clock.stamp(), patch: ["geo": .string(geo)])])
+                if let geo {
+                    send([Op(kind: "update", node: existing, hlc: clock.stamp(), patch: ["geo": .string(geo)])])
+                } else {
+                    send([Op(kind: "update", node: existing, hlc: clock.stamp(), unset: ["geo"])])
+                }
             }
             return existing
         }
