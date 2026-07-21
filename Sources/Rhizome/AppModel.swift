@@ -117,6 +117,12 @@ final class AppModel {
         didSet { UserDefaults.standard.set(haptics, forKey: "haptics"); Haptics.enabled = haptics }
     }
 
+    /// Default for the location button: reverse-geocode a new geotag to its address.
+    /// Long-press the button to invert this choice for a single tag. Persisted locally.
+    var geoResolveAddress: Bool {
+        didSet { UserDefaults.standard.set(geoResolveAddress, forKey: "geoResolveAddress") }
+    }
+
     /// Require Face ID / Touch ID to open the app.
     var appLock: Bool {
         didSet { UserDefaults.standard.set(appLock, forKey: "appLock"); if !appLock { locked = false } }
@@ -180,6 +186,7 @@ final class AppModel {
         accent = UserDefaults.standard.string(forKey: "accent").flatMap(AccentChoice.init) ?? Self.defaultAccent
         imageScalePercent = UserDefaults.standard.object(forKey: "imageScalePercent") as? Double ?? 100
         haptics = UserDefaults.standard.object(forKey: "haptics") as? Bool ?? true
+        geoResolveAddress = UserDefaults.standard.object(forKey: "geoResolveAddress") as? Bool ?? true
         appLock = UserDefaults.standard.object(forKey: "appLock") as? Bool ?? false
         scaleWithSystem = UserDefaults.standard.object(forKey: "scaleWithSystem") as? Bool ?? false
         editorTools = (UserDefaults.standard.array(forKey: "editorTools") as? [String])?.compactMap(EditorTool.init) ?? EditorTool.defaultOrder
@@ -684,31 +691,44 @@ final class AppModel {
         return createPage(title: q)
     }
 
-    private func createPage(title: String) -> String {
+    private func createPage(title: String, geo: String? = nil) -> String {
         guard let root = doc?.root else { return "" }
         let id = clock.newID()
-        doc?.nodes[id] = RNode(text: title, children: [])
+        doc?.nodes[id] = RNode(text: title, children: [], geo: geo)
         if doc?.nodes[root]?.children == nil { doc?.nodes[root]?.children = [] }
         let ord = doc?.nodes[root]?.children?.count ?? 0
         doc?.nodes[root]?.children?.append(id)
         parentMap[id] = root
-        send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: root, ord: ord, data: ["text": .string(title)])])
+        var data: [String: JSONValue] = ["text": .string(title)]
+        if let geo { data["geo"] = .string(geo) }
+        send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: root, ord: ord, data: data)])
         return id
     }
 
-    /// Existing top-level page whose title matches `title`, else a freshly created one.
-    private func findOrCreatePage(title: String) -> String {
+    /// Existing top-level page whose title matches `title`, else a freshly created one. When a
+    /// `geo` flag is asked for (e.g. "raw"), it is stamped on the page — created or reused — so
+    /// the choice not to reverse-geocode is durable and every client (web included) honours it.
+    private func findOrCreatePage(title: String, geo: String? = nil) -> String {
         if let doc, let existing = (doc.nodes[doc.root]?.children ?? []).first(where: {
             doc.nodes[$0]?.cal == nil &&
             RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces) == title
-        }) { return existing }
-        return createPage(title: title)
+        }) {
+            if let geo, self.doc?.nodes[existing]?.geo != geo {
+                self.doc?.nodes[existing]?.geo = geo
+                send([Op(kind: "update", node: existing, hlc: clock.stamp(), patch: ["geo": .string(geo)])])
+            }
+            return existing
+        }
+        return createPage(title: title, geo: geo)
     }
 
     /// Geo button: fetch the current position and append it as a `[[coords]]` page link to the
     /// bullet you started from (find-or-create the coordinates page). Appending — rather than a
     /// caret splice — means it works whether or not the editor kept focus during the fetch.
-    func insertGeoLink() async {
+    /// - Parameter resolveAddress: reverse-geocode the tag to a street address (the default,
+    ///   from `geoResolveAddress`), or keep it as a raw `lat, lon` page. A raw page is stamped
+    ///   `geo:"raw"` so no client later geocodes it behind your back.
+    func insertGeoLink(resolveAddress: Bool) async {
         guard !locating, let id = editingID else { return }
         locationProvider.start()
         // use the warm fix if we have one; otherwise poll briefly (bounded — never hangs)
@@ -724,10 +744,12 @@ final class AppModel {
             return
         }
         let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
-        let pageID = findOrCreatePage(title: title)
+        let pageID = findOrCreatePage(title: title, geo: resolveAddress ? nil : "raw")
         guard !pageID.isEmpty else { return }
         appendGeo(to: id, source: "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
-        await geocodeAndRetitle(pageID, lat: coord.latitude, lon: coord.longitude)   // resolve the address + retitle
+        if resolveAddress {
+            await geocodeAndRetitle(pageID, lat: coord.latitude, lon: coord.longitude)   // resolve the address + retitle
+        }
     }
 
     /// Append a source fragment to a bullet (separated by a space) and sync. If that bullet is
@@ -788,6 +810,7 @@ final class AppModel {
     /// page to the address, and relabel links whose text is still the raw coords (mirrors the web).
     func geocodeAndRetitle(_ pageID: String, lat: Double, lon: Double) async {
         guard let api, doc?.nodes[pageID] != nil else { return }
+        if doc?.nodes[pageID]?.geo == "raw" { return }   // user chose coordinates only — never retitle
         let address = (try? await api.reverseGeocode(lat: lat, lon: lon)) ?? ""
         guard !address.isEmpty, parseCoords(doc?.nodes[pageID]?.text ?? "") != nil else { return }
         let coordsText = String(format: "%.5f, %.5f", lat, lon)

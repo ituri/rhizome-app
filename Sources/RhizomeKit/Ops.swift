@@ -103,6 +103,7 @@ extension RNode {
             case "done": if case let .bool(b) = v { done = b }
             case "collapsed": if case let .bool(b) = v { collapsed = b }
             case "format": if case let .string(s) = v { format = s }
+            case "geo": if case let .string(s) = v { geo = s } else if case .null = v { geo = nil }
             case "cal": if case let .string(s) = v { cal = s }
             case "cd": if case let .string(s) = v { cd = s }
             case "cm": if case let .int(i) = v { cm = i }
@@ -119,6 +120,7 @@ extension RNode {
     mutating func unset(_ key: String) {
         switch key {
         case "format": format = nil
+        case "geo": geo = nil
         case "note": note = nil
         case "done": done = nil
         case "collapsed": collapsed = nil

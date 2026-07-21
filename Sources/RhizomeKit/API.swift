@@ -103,6 +103,7 @@ public struct RNode: Codable, Sendable {
     public var done: Bool?
     public var cal: String?    // "root" | "year" | "month" | "day" on calendar nodes
     public var format: String? // nil = bullet; "todo" renders a checkbox, plus number/h1/quote/…
+    public var geo: String?    // "raw" on a location page the user chose NOT to reverse-geocode
     public var files: [RFile]? // image / file attachments
     public var cd: String?     // calendar day, "yyyy-MM-dd" (the day's stable identity)
     public var cm: Int?        // calendar month (0-based) on month nodes
@@ -113,12 +114,12 @@ public struct RNode: Codable, Sendable {
     public init(
         text: String? = nil, note: String? = nil, children: [String]? = nil,
         collapsed: Bool? = nil, done: Bool? = nil, cal: String? = nil,
-        format: String? = nil, files: [RFile]? = nil,
+        format: String? = nil, geo: String? = nil, files: [RFile]? = nil,
         cd: String? = nil, cm: Int? = nil, cy: Int? = nil, m: Double? = nil, c: Double? = nil
     ) {
         self.text = text; self.note = note; self.children = children
         self.collapsed = collapsed; self.done = done; self.cal = cal
-        self.format = format; self.files = files
+        self.format = format; self.geo = geo; self.files = files
         self.cd = cd; self.cm = cm; self.cy = cy; self.m = m; self.c = c
     }
 }

@@ -111,11 +111,12 @@ struct SettingsView: View {
                 Section {
                     Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
                     Toggle("Haptic feedback", isOn: $model.haptics)
+                    Toggle("Resolve location address", isOn: $model.geoResolveAddress)
                     NavigationLink("Editor toolbar") { EditorToolbarView() }
                 } header: {
                     Text("Behaviour")
                 } footer: {
-                    Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices.")
+                    Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices. With “Resolve location address” on, a new location tag is reverse-geocoded to its street address; off keeps the raw coordinates. Long-press the location button to do the opposite just once.")
                 }
 
                 // ---- Uploads ----

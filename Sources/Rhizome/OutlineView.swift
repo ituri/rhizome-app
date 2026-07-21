@@ -405,9 +405,18 @@ struct KeyboardAccessory: View {
         case .link:
             Button { model.suppressBlur = true; linkText = ""; showLinkAlert = true } label: { Image(systemName: tool.icon) }
         case .geo:
-            Button { Task { await model.insertGeoLink() } } label: {
-                Image(systemName: model.locating ? "location.fill" : "location").foregroundStyle(Color.rzAccent)
-            }
+            // Tap = your default (Settings → resolve address); long-press inverts it for one tag.
+            Image(systemName: model.locating ? "location.fill" : "location")
+                .foregroundStyle(Color.rzAccent)
+                .frame(minWidth: 30, minHeight: 30)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    Task { await model.insertGeoLink(resolveAddress: model.geoResolveAddress) }
+                }
+                .onLongPressGesture {
+                    Haptics.impact(.medium)   // a distinct buzz signals the inverted, one-off mode
+                    Task { await model.insertGeoLink(resolveAddress: !model.geoResolveAddress) }
+                }
         case .todo:
             Button { runTool(tool) } label: {
                 Image(systemName: editingFormat == "todo" ? "checkmark.circle.fill" : "checkmark.circle")
