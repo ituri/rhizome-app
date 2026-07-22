@@ -40,6 +40,14 @@ struct CaptureProvider: TimelineProvider {
     }
 }
 
+// snapshot items are encoded "<depth>\t<text>"; fall back to depth 0 for plain strings
+private func parseItem(_ raw: String) -> (depth: Int, text: String) {
+    if let tab = raw.firstIndex(of: "\t"), let d = Int(raw[..<tab]) {
+        return (min(d, 3), String(raw[raw.index(after: tab)...]))
+    }
+    return (0, raw)
+}
+
 struct CaptureWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: CaptureEntry
@@ -79,12 +87,14 @@ struct CaptureWidgetView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                 Spacer(minLength: 0)
             } else {
-                ForEach(entry.items.prefix(4), id: \.self) { item in
+                ForEach(Array(entry.items.prefix(4).enumerated()), id: \.offset) { _, raw in
+                    let item = parseItem(raw)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("•").foregroundStyle(rzClay)
-                        Text(item).lineLimit(1).foregroundStyle(rzInk)
+                        Text(item.depth == 0 ? "•" : "◦").foregroundStyle(rzClay)
+                        Text(item.text).lineLimit(1).foregroundStyle(rzInk)
                     }
                     .font(.system(size: 13))
+                    .padding(.leading, CGFloat(item.depth) * 12)
                 }
                 if entry.items.count > 4 {
                     Text("+\(entry.items.count - 4) more")

@@ -23,6 +23,7 @@ struct RhizomeApp: App {
                 Task { await model.unlock() }       // prompt Face ID if we're locked
             case .background:
                 model.lockIfEnabled()               // re-lock when backgrounded
+                model.refreshWidgetSnapshot()        // publish the latest items (incl. just-made edits)
             default:
                 break
             }

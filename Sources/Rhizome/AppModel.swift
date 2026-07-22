@@ -1350,9 +1350,22 @@ final class AppModel {
                    let bulletID = (doc.nodes[dayID]?.children ?? []).first(where: {
                        RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces).lowercased() == want
                    }) {
-                    for cid in (doc.nodes[bulletID]?.children ?? []).prefix(8) {
-                        let t = RichText.plain(doc.nodes[cid]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
-                        if !t.isEmpty { items.append(t) }
+                    // walk the bullet's subtree in order, encoding depth as "<depth>\t<text>" so the
+                    // widget can indent sub-bullets; cap at a handful of lines for the medium size
+                    let limit = 6
+                    func collect(_ id: String, _ depth: Int) {
+                        guard items.count < limit, let doc else { return }
+                        let t = RichText.plain(doc.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+                        let childDepth: Int
+                        if t.isEmpty { childDepth = depth } else { items.append("\(depth)\t\(t)"); childDepth = depth + 1 }
+                        for c in doc.nodes[id]?.children ?? [] {
+                            if items.count >= limit { break }
+                            collect(c, childDepth)
+                        }
+                    }
+                    for c in doc.nodes[bulletID]?.children ?? [] {
+                        if items.count >= limit { break }
+                        collect(c, 0)
                     }
                 }
             }
