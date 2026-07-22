@@ -2,14 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- The medium widget's item list needs the App Group below to read the app's snapshot.
-         It's commented out until the App Groups capability is enabled for the
-         org.syslinx.rhizome.Widget App ID in the Apple Developer portal (cloud signing won't
-         add it automatically). Until then the widget builds + works as a capture launcher.
+    <!-- Same App Group as the app + Share Extension, so the medium widget can read the
+         snapshot of today's capture-bullet items the app publishes. Requires the App Groups
+         capability to be enabled for org.syslinx.rhizome.Widget in the Apple Developer portal. -->
     <key>com.apple.security.application-groups</key>
     <array>
         <string>group.org.syslinx.rhizome</string>
     </array>
-    -->
 </dict>
 </plist>
