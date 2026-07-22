@@ -3,14 +3,19 @@ name: TestFlight
 # Builds the app on a macOS runner and uploads it to TestFlight.
 # Trigger: push a version tag (e.g. `git tag v1.0.0 && git push --tags`) or run manually.
 #
-# Signing is fully automatic (Xcode "cloud" signing) via an App Store Connect API key —
-# no distribution certificate or provisioning profiles to create/export by hand.
+# Signing uses a persistent distribution certificate when provided (so the ephemeral runners
+# reuse ONE cert instead of minting a new one each build — which piled up to Apple's cert limit),
+# and falls back to fully automatic "cloud" signing otherwise. Provisioning profiles are still
+# managed automatically via the App Store Connect API key (-allowProvisioningUpdates).
 #
-# One-time setup (see docs/TESTFLIGHT.md) — add these four repo secrets:
+# One-time setup (see docs/TESTFLIGHT.md) — required repo secrets:
 #   APPLE_TEAM_ID        your 10-char Team ID (portal → Membership)
 #   ASC_KEY_ID           App Store Connect API key ID
 #   ASC_ISSUER_ID        App Store Connect API issuer ID
 #   ASC_KEY_P8_BASE64    the API key (.p8) file, base64  (`base64 -w0 AuthKey_XXXX.p8`)
+# Optional but recommended (avoids the certificate-limit problem):
+#   APPLE_DIST_CERT_P12_BASE64   an Apple Distribution cert + key as .p12, base64
+#   APPLE_DIST_CERT_PASSWORD     the .p12 export password
 
 on:
   push:
@@ -86,6 +91,34 @@ jobs:
           echo "${{ secrets.ASC_KEY_P8_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/asc.p8"
           mkdir -p ~/.appstoreconnect/private_keys
           cp "$RUNNER_TEMP/asc.p8" ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+      # Import a persistent Apple Distribution certificate into a temporary keychain so automatic
+      # signing REUSES it instead of minting a fresh certificate on every ephemeral runner — those
+      # orphaned certs piled up until the account hit Apple's certificate limit. Skipped (falls back
+      # to cloud-managed signing) when the APPLE_DIST_CERT_P12_BASE64 secret isn't set.
+      - name: Import signing certificate
+        env:
+          P12_BASE64: ${{ secrets.APPLE_DIST_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DIST_CERT_PASSWORD }}
+        run: |
+          if [ -z "$P12_BASE64" ]; then
+            echo "No APPLE_DIST_CERT_P12_BASE64 secret set — using cloud-managed signing."
+            exit 0
+          fi
+          CERT="$RUNNER_TEMP/dist.p12"
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KP="$(openssl rand -base64 24)"
+          echo "$P12_BASE64" | base64 --decode > "$CERT"
+          security create-keychain -p "$KP" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KP" "$KEYCHAIN"
+          security import "$CERT" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KP" "$KEYCHAIN" >/dev/null
+          # make xcodebuild search this keychain first, keeping the runner's defaults too
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KEYCHAIN"
+          echo "Imported distribution certificate:"
+          security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*"\(.*\)".*/  \1/p'
 
       # Archive WITH automatic (cloud) signing so each target's CODE_SIGN_ENTITLEMENTS — notably
       # the App Group — is baked into the signed binaries. An unsigned archive + sign-on-export

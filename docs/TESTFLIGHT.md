@@ -42,6 +42,39 @@ Repo → *Settings → Secrets and variables → Actions* → **New repository s
 | `ASC_ISSUER_ID` | The API **Issuer ID** from step 2. |
 | `ASC_KEY_P8_BASE64` | The `.p8` file, base64-encoded: `base64 -w0 AuthKey_XXXXXXXXXX.p8` |
 
+## Persistent signing certificate (recommended — avoids the cert-limit problem)
+
+With pure cloud signing, every ephemeral runner lets Xcode mint a **new** certificate; the private
+key is thrown away with the runner but the cert stays in your account and counts against Apple's
+limit (max 2–3 Apple Distribution certs). After enough builds you hit *"maximum number of
+certificates"* and every build fails. The fix: create **one** distribution certificate, hand it to
+CI as a secret, and the workflow imports it so signing reuses it forever. No Mac needed — do it all
+on Linux with `openssl`.
+
+1. **Make a private key + CSR:**
+   ```sh
+   openssl genrsa -out dist.key 2048
+   openssl req -new -key dist.key -out dist.csr -subj "/CN=Rhizome Distribution/emailAddress=you@example.org/C=DE"
+   ```
+2. **Get the certificate:** developer.apple.com → *Certificates* → **+** → **Apple Distribution** →
+   upload `dist.csr` → download `distribution.cer`.
+3. **Bundle key + cert into a `.p12`** (choose any export password):
+   ```sh
+   openssl x509 -inform DER -in distribution.cer -out dist.pem
+   openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12 -passout pass:CHOOSE_A_PASSWORD
+   base64 -w0 dist.p12          # → the APPLE_DIST_CERT_P12_BASE64 secret
+   ```
+4. **Add two secrets:**
+
+| Secret | What it is |
+|---|---|
+| `APPLE_DIST_CERT_P12_BASE64` | The `dist.p12`, base64-encoded (step 3). |
+| `APPLE_DIST_CERT_PASSWORD` | The export password you chose in step 3. |
+
+Keep `dist.key` / `dist.p12` **safe and out of git** — the `.p12` is your distribution identity.
+The certificate is valid ~1 year; regenerate the same way when it expires. If the secret is absent
+the workflow silently falls back to cloud signing.
+
 ## Running it
 
 ```
