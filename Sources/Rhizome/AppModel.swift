@@ -1354,7 +1354,7 @@ final class AppModel {
                     // widget can indent sub-bullets; cap at a handful of lines for the medium size
                     let limit = 6
                     func collect(_ id: String, _ depth: Int) {
-                        guard items.count < limit, let doc else { return }
+                        guard items.count < limit else { return }
                         let t = RichText.plain(doc.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
                         let childDepth: Int
                         if t.isEmpty { childDepth = depth } else { items.append("\(depth)\t\(t)"); childDepth = depth + 1 }
