@@ -2,8 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- The widget only deep-links into the app (rhizome://capture); it reads no shared data,
-         so it needs no App Group / Keychain entitlements. Keeping this empty lets cloud signing
-         issue a matching provisioning profile for org.syslinx.rhizome.Widget. -->
+    <!-- Same App Group as the app + Share Extension, so the medium widget can read the
+         snapshot of today's capture-bullet items the app publishes. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.org.syslinx.rhizome</string>
+    </array>
 </dict>
 </plist>

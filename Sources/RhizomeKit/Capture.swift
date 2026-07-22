@@ -20,10 +20,11 @@ public enum Capture {
 
         var request = URLRequest(url: base.appendingPathComponent("api/capture"))
         request.httpMethod = "POST"
-        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("rz_session=\(cookie)", forHTTPHeaderField: "Cookie")   // reuse the app's session
         let line = AppGroup.captureTimestamp ? "\(timestamp()) \(body)" : body
-        request.httpBody = Data(line.utf8)
+        struct Body: Encodable { let text: String; let bullet: String }
+        request.httpBody = try JSONEncoder().encode(Body(text: line, bullet: AppGroup.captureBullet))
 
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {

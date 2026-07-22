@@ -31,10 +31,21 @@ public enum AppGroup {
         defaults?.object(forKey: "captureTimestamp") as? Bool ?? true
     }
 
+    /// The journal bullet quick-capture files under (mirrors the app setting; default "Inbox").
+    public static var captureBullet: String {
+        let s = defaults?.string(forKey: "captureBullet")?.trimmingCharacters(in: .whitespaces) ?? ""
+        return s.isEmpty ? "Inbox" : s
+    }
+
+    /// A snapshot of today's capture-bullet items, for the medium widget to render.
+    public static var widgetItems: [String] { defaults?.stringArray(forKey: "widgetItems") ?? [] }
+
     // MARK: - written by the main app
 
     public static func setServerURL(_ s: String) { defaults?.set(s, forKey: "serverURL") }
     public static func setCaptureTimestamp(_ on: Bool) { defaults?.set(on, forKey: "captureTimestamp") }
+    public static func setCaptureBullet(_ s: String) { defaults?.set(s, forKey: "captureBullet") }
+    public static func setWidgetItems(_ items: [String]) { defaults?.set(items, forKey: "widgetItems") }
 
     /// Mirror the app's `rz_session` cookie value + server URL so the extension can post as the
     /// signed-in user. Call after a successful sign-in.

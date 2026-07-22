@@ -110,13 +110,20 @@ struct SettingsView: View {
                 // ---- Editing behaviour ----
                 Section {
                     Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
+                    LabeledContent("Capture bullet") {
+                        TextField("Inbox", text: $model.captureBullet)
+                            .multilineTextAlignment(.trailing)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.words)
+                            .submitLabel(.done)
+                    }
                     Toggle("Haptic feedback", isOn: $model.haptics)
                     Toggle("Resolve location address", isOn: $model.geoResolveAddress)
                     NavigationLink("Editor toolbar") { EditorToolbarView() }
                 } header: {
                     Text("Behaviour")
                 } footer: {
-                    Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices. With “Resolve location address” on, a tap of the location button reverse-geocodes a new tag to its street address; off keeps the raw coordinates. Long-press the button to choose either way for a single tag.")
+                    Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices. Quick capture (the + button, the share sheet and the Home Screen widget) files notes under the “Capture bullet” in today’s journal — “Inbox” by default. With “Resolve location address” on, a tap of the location button reverse-geocodes a new tag to its street address; off keeps the raw coordinates. Long-press the button to choose either way for a single tag.")
                 }
 
                 // ---- Uploads ----

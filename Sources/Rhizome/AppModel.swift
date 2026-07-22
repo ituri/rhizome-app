@@ -5,6 +5,7 @@ import UIKit
 import Network
 import CoreLocation
 import LocalAuthentication
+import WidgetKit
 import RhizomeKit
 
 /// What a `[[` / `((` autocomplete is currently linking to.
@@ -64,6 +65,18 @@ final class AppModel {
             UserDefaults.standard.set(captureTimestamp, forKey: "captureTimestamp")
             AppGroup.setCaptureTimestamp(captureTimestamp)   // the Share Extension honours it too
             if !applyingRemotePrefs { pushPrefs() }
+        }
+    }
+
+    /// The journal bullet quick-capture (and the widget) file notes under — default "Inbox".
+    /// Device-local; also mirrored to the App Group so the widget shows the right bullet.
+    var captureBullet: String {
+        didSet {
+            let v = captureBullet.trimmingCharacters(in: .whitespaces)
+            if v.isEmpty { captureBullet = "Inbox"; return }   // never blank
+            UserDefaults.standard.set(captureBullet, forKey: "captureBullet")
+            AppGroup.setCaptureBullet(captureBullet)
+            refreshWidgetSnapshot()
         }
     }
 
@@ -179,6 +192,7 @@ final class AppModel {
         serverURLString = saved ?? "https://rhizome.syslinx.org"   // prefilled; editable on the sign-in screen
         activeGraphID = UserDefaults.standard.string(forKey: "activeGraphID")
         captureTimestamp = UserDefaults.standard.object(forKey: "captureTimestamp") as? Bool ?? true
+        captureBullet = UserDefaults.standard.string(forKey: "captureBullet") ?? "Inbox"
         deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? UIDevice.current.name
         fontSize = UserDefaults.standard.object(forKey: "fontSize") as? Double ?? Self.defaultFontSize
         lineSpacing = UserDefaults.standard.object(forKey: "lineSpacing") as? Double ?? Self.defaultLineSpacing
@@ -306,6 +320,7 @@ final class AppModel {
             reindex()
             isOffline = false
             ensureToday()   // create today's journal day if the server doesn't have it yet
+            refreshWidgetSnapshot()   // publish today's capture bullet + items to the widget
             drain()   // network is up — flush any edits queued while offline
         } catch {
             isOffline = true
@@ -1308,7 +1323,7 @@ final class AppModel {
             line = body
         }
         do {
-            try await api.capture(line, deviceName: deviceName)
+            try await api.capture(line, deviceName: deviceName, bullet: captureBullet)
             await loadDoc()
         } catch {
             errorMessage = String(describing: error)
@@ -1319,6 +1334,31 @@ final class AppModel {
     func handleURL(_ url: URL) {
         guard url.scheme == "rhizome" else { return }
         if url.host == "capture" { pendingCapture = true }
+    }
+
+    /// Publish today's capture-bullet items to the App Group so the medium widget can show them,
+    /// then ask WidgetKit to reload. Cheap; called after the doc loads and when the bullet changes.
+    func refreshWidgetSnapshot() {
+        AppGroup.setCaptureBullet(captureBullet)
+        var items: [String] = []
+        if let doc {
+            let p = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+            if let y = p.year, let m = p.month, let d = p.day {
+                let cd = String(format: "%04d-%02d-%02d", y, m, d)
+                let want = captureBullet.trimmingCharacters(in: .whitespaces).lowercased()
+                if let dayID = doc.nodes.first(where: { $0.value.cal == "day" && $0.value.cd == cd })?.key,
+                   let bulletID = (doc.nodes[dayID]?.children ?? []).first(where: {
+                       RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces).lowercased() == want
+                   }) {
+                    for cid in (doc.nodes[bulletID]?.children ?? []).prefix(8) {
+                        let t = RichText.plain(doc.nodes[cid]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+                        if !t.isEmpty { items.append(t) }
+                    }
+                }
+            }
+        }
+        AppGroup.setWidgetItems(items)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Journal: ensure today exists
@@ -1528,6 +1568,7 @@ final class AppModel {
         // hand the signed-in session to the Share Extension via the App Group
         AppGroup.mirrorSession(from: api.baseURL)
         AppGroup.setCaptureTimestamp(captureTimestamp)
+        AppGroup.setCaptureBullet(captureBullet)
         if activeGraphID == nil || !graphs.contains(where: { $0.id == activeGraphID }) {
             activeGraphID = graphs.first?.id
         }

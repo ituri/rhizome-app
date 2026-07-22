@@ -308,9 +308,9 @@ public struct RhizomeAPI: Sendable {
 
     /// Quick-capture a line into today's journal Inbox (the server creates the day
     /// node if needed). Uses the current session.
-    public func capture(_ text: String, deviceName: String = "") async throws {
-        struct Body: Encodable { let text: String; let deviceName: String }
-        _ = try await post("api/capture", body: Body(text: text, deviceName: deviceName))
+    public func capture(_ text: String, deviceName: String = "", bullet: String = "") async throws {
+        struct Body: Encodable { let text: String; let deviceName: String; let bullet: String }
+        _ = try await post("api/capture", body: Body(text: text, deviceName: deviceName, bullet: bullet))
     }
 
     // MARK: request plumbing
