@@ -1341,6 +1341,7 @@ final class AppModel {
     func refreshWidgetSnapshot() {
         AppGroup.setCaptureBullet(captureBullet)
         var items: [String] = []
+        var total = 0
         if let doc {
             let p = Calendar.current.dateComponents([.year, .month, .day], from: Date())
             if let y = p.year, let m = p.month, let d = p.day {
@@ -1350,9 +1351,12 @@ final class AppModel {
                    let bulletID = (doc.nodes[dayID]?.children ?? []).first(where: {
                        RichText.plain(doc.nodes[$0]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces).lowercased() == want
                    }) {
-                    // walk the bullet's subtree in order, encoding depth as "<depth>\t<text>" so the
-                    // widget can indent sub-bullets; cap at a handful of lines for the medium size
-                    let limit = 6
+                    // Newest entries first (older ones fall off), with each entry's sub-bullets
+                    // indented beneath it. depth is encoded as "<depth>\t<text>". Cap at a handful
+                    // of lines for the medium size; `total` counts all entries for the "+N more" hint.
+                    let entries = doc.nodes[bulletID]?.children ?? []
+                    total = entries.count
+                    let limit = 8
                     func collect(_ id: String, _ depth: Int) {
                         guard items.count < limit else { return }
                         let t = RichText.plain(doc.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
@@ -1363,14 +1367,15 @@ final class AppModel {
                             collect(c, childDepth)
                         }
                     }
-                    for c in doc.nodes[bulletID]?.children ?? [] {
+                    for entryID in entries.reversed() {   // newest first
                         if items.count >= limit { break }
-                        collect(c, 0)
+                        collect(entryID, 0)
                     }
                 }
             }
         }
         AppGroup.setWidgetItems(items)
+        AppGroup.setWidgetTotal(total)
         WidgetCenter.shared.reloadAllTimelines()
     }
 

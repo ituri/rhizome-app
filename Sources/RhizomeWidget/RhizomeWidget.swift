@@ -8,28 +8,30 @@ private let rzInk = Color(red: 0.20, green: 0.19, blue: 0.17)
 
 private let appGroupID = "group.org.syslinx.rhizome"
 
-/// Today's capture bullet + a preview of its items, published by the app into the App Group.
-private func loadSnapshot() -> (bullet: String, items: [String]) {
+/// Today's capture bullet + a preview of its items (newest first), from the App Group.
+private func loadSnapshot() -> (bullet: String, items: [String], total: Int) {
     let d = UserDefaults(suiteName: appGroupID)
     let raw = d?.string(forKey: "captureBullet")?.trimmingCharacters(in: .whitespaces) ?? ""
     let bullet = raw.isEmpty ? "Inbox" : raw
     let items = d?.stringArray(forKey: "widgetItems") ?? []
-    return (bullet, items)
+    let total = d?.integer(forKey: "widgetTotal") ?? items.count
+    return (bullet, items, total)
 }
 
 struct CaptureEntry: TimelineEntry {
     let date: Date
     let bullet: String
-    let items: [String]
+    let items: [String]   // newest first, "<depth>\t<text>"
+    let total: Int        // total entries under the bullet today
 }
 
 struct CaptureProvider: TimelineProvider {
     private func entry() -> CaptureEntry {
         let s = loadSnapshot()
-        return CaptureEntry(date: .now, bullet: s.bullet, items: s.items)
+        return CaptureEntry(date: .now, bullet: s.bullet, items: s.items, total: s.total)
     }
     func placeholder(in context: Context) -> CaptureEntry {
-        CaptureEntry(date: .now, bullet: "Inbox", items: ["Milch kaufen", "Zahnarzt anrufen"])
+        CaptureEntry(date: .now, bullet: "Inbox", items: ["Milch kaufen", "Zahnarzt anrufen"], total: 2)
     }
     func getSnapshot(in context: Context, completion: @escaping (CaptureEntry) -> Void) {
         completion(entry())
@@ -71,7 +73,15 @@ struct CaptureWidgetView: View {
         }
     }
 
-    // Medium: today's items under the capture bullet, plus a capture affordance.
+    // the newest few items to render (already newest-first in the snapshot)
+    private var shownItems: [String] { Array(entry.items.prefix(4)) }
+    // older entries that fell off the bottom, counted at the entry (depth-0) level
+    private var olderCount: Int {
+        let shownEntries = shownItems.filter { parseItem($0).depth == 0 }.count
+        return max(0, entry.total - shownEntries)
+    }
+
+    // Medium: today's newest items under the capture bullet, plus a capture affordance.
     private var medium: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -87,7 +97,7 @@ struct CaptureWidgetView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                 Spacer(minLength: 0)
             } else {
-                ForEach(Array(entry.items.prefix(4).enumerated()), id: \.offset) { _, raw in
+                ForEach(Array(shownItems.enumerated()), id: \.offset) { _, raw in
                     let item = parseItem(raw)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(item.depth == 0 ? "•" : "◦").foregroundStyle(rzClay)
@@ -96,8 +106,8 @@ struct CaptureWidgetView: View {
                     .font(.system(size: 13))
                     .padding(.leading, CGFloat(item.depth) * 12)
                 }
-                if entry.items.count > 4 {
-                    Text("+\(entry.items.count - 4) more")
+                if olderCount > 0 {
+                    Text("+\(olderCount) older")
                         .font(.system(size: 11)).foregroundStyle(rzInk.opacity(0.5))
                 }
                 Spacer(minLength: 0)

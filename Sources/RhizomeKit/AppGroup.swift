@@ -37,8 +37,11 @@ public enum AppGroup {
         return s.isEmpty ? "Inbox" : s
     }
 
-    /// A snapshot of today's capture-bullet items, for the medium widget to render.
+    /// A snapshot of today's capture-bullet items (newest first), for the medium widget to render.
     public static var widgetItems: [String] { defaults?.stringArray(forKey: "widgetItems") ?? [] }
+
+    /// Total number of entries under the capture bullet today (for the widget's "+N more" hint).
+    public static var widgetTotal: Int { defaults?.integer(forKey: "widgetTotal") ?? 0 }
 
     // MARK: - written by the main app
 
@@ -46,6 +49,7 @@ public enum AppGroup {
     public static func setCaptureTimestamp(_ on: Bool) { defaults?.set(on, forKey: "captureTimestamp") }
     public static func setCaptureBullet(_ s: String) { defaults?.set(s, forKey: "captureBullet") }
     public static func setWidgetItems(_ items: [String]) { defaults?.set(items, forKey: "widgetItems") }
+    public static func setWidgetTotal(_ n: Int) { defaults?.set(n, forKey: "widgetTotal") }
 
     /// Mirror the app's `rz_session` cookie value + server URL so the extension can post as the
     /// signed-in user. Call after a successful sign-in.
