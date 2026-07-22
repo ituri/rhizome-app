@@ -4,6 +4,8 @@ import SwiftUI
 /// native outline.
 struct ContentView: View {
     @Environment(AppModel.self) private var model
+    @State private var showCapture = false
+    @State private var captureText = ""
 
     var body: some View {
         switch model.phase {
@@ -21,7 +23,24 @@ struct ContentView: View {
                 Tab("Search", systemImage: "magnifyingglass", role: .search) { SearchView() }
             }
             .overlay { if model.appLock && model.locked { LockView() } }
+            // widget deep link (rhizome://capture) → the same quick-capture sheet as the + button,
+            // available whichever tab is showing. onAppear covers a cold launch by the widget.
+            .alert("Capture to today", isPresented: $showCapture) {
+                TextField("Note", text: $captureText)
+                Button("Add") {
+                    let text = captureText; captureText = ""
+                    Task { await model.captureToday(text) }
+                }
+                Button("Cancel", role: .cancel) { captureText = "" }
+            }
+            .onChange(of: model.pendingCapture) { _, want in if want { consumeCapture() } }
+            .onAppear { if model.pendingCapture { consumeCapture() } }
         }
+    }
+
+    private func consumeCapture() {
+        model.pendingCapture = false
+        showCapture = true
     }
 }
 

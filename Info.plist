@@ -10,6 +10,18 @@
     <string>Rhizome nutzt Face ID, um die App zu entsperren.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <!-- rhizome:// deep links (Home Screen widget → quick capture). -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>org.syslinx.rhizome</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>rhizome</string>
+            </array>
+        </dict>
+    </array>
     <!-- iPhone only (1 = iPhone/iPod, 2 = iPad); overrides xtool's universal default. -->
     <key>UIDeviceFamily</key>
     <array>

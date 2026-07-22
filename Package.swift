@@ -19,6 +19,11 @@ let package = Package(
             name: "RhizomeShare",
             targets: ["RhizomeShare"]
         ),
+        // The Home Screen widget (a quick-capture launcher).
+        .library(
+            name: "RhizomeWidget",
+            targets: ["RhizomeWidget"]
+        ),
     ],
     targets: [
         // Shared config + API client + App Group glue, used by the app and the extension.
@@ -33,6 +38,10 @@ let package = Package(
         .target(
             name: "RhizomeShare",
             dependencies: ["RhizomeKit"]
+        ),
+        // Self-contained (no RhizomeKit) so the widget stays lean — it only deep-links home.
+        .target(
+            name: "RhizomeWidget"
         ),
     ]
 )

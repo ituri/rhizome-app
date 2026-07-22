@@ -9,3 +9,7 @@ extensions:
     bundleID: org.syslinx.rhizome.Share
     infoPath: RhizomeShare-Info.plist
     entitlementsPath: RhizomeShare.entitlements
+  - product: RhizomeWidget
+    bundleID: org.syslinx.rhizome.Widget
+    infoPath: RhizomeWidget-Info.plist
+    entitlementsPath: RhizomeWidget.entitlements

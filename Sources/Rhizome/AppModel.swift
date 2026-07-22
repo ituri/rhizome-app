@@ -335,6 +335,7 @@ final class AppModel {
     var locating = false                          // geo button is waiting for a fix
     var geoMessage: String?                       // transient status/diagnostic shown after a geo tap
     var notice: String?                           // generic transient alert (e.g. an upload/quota error)
+    var pendingCapture = false                    // set by the widget deep link → shows the capture sheet
     @ObservationIgnored private let locationProvider = LocationProvider()
     private var flushTask: Task<Void, Never>?
 
@@ -1312,6 +1313,12 @@ final class AppModel {
         } catch {
             errorMessage = String(describing: error)
         }
+    }
+
+    /// Handle a `rhizome://` deep link (e.g. from the Home Screen widget).
+    func handleURL(_ url: URL) {
+        guard url.scheme == "rhizome" else { return }
+        if url.host == "capture" { pendingCapture = true }
     }
 
     // MARK: - Journal: ensure today exists

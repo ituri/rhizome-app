@@ -14,6 +14,7 @@ struct RhizomeApp: App {
                 .tint(rzAccentColor(model.accent))
                 .preferredColorScheme(model.theme.colorScheme)
                 .task { await model.bootstrap() }
+                .onOpenURL { model.handleURL($0) }   // widget → rhizome://capture
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
