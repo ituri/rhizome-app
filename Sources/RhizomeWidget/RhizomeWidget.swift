@@ -73,11 +73,11 @@ struct CaptureWidgetView: View {
                 Image(systemName: "square.and.pencil").font(.system(size: 16, weight: .semibold)).foregroundStyle(rzClay)
             }
             if entry.items.isEmpty {
-                Spacer()
-                Text("Nothing yet — tap to capture")
-                    .font(.system(size: 13)).foregroundStyle(rzInk.opacity(0.5))
+                // no items yet (or the App Group snapshot isn't available) → offer capture
+                Spacer(minLength: 0)
+                captureButton.frame(maxWidth: 200)
                     .frame(maxWidth: .infinity, alignment: .center)
-                Spacer()
+                Spacer(minLength: 0)
             } else {
                 ForEach(entry.items.prefix(4), id: \.self) { item in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
