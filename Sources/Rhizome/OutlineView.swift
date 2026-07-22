@@ -132,6 +132,9 @@ struct OutlineRow: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)   // stay tappable when empty
+            // A row that's entirely a link (e.g. a URL shared into the Inbox) has no tappable
+            // non-link area — a tap opens the link, so editing needs its own gesture.
+            .onLongPressGesture(minimumDuration: 0.4) { model.beginEdit(id) }
         }
     }
 
