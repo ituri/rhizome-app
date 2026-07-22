@@ -11,7 +11,9 @@ public enum Capture {
 
     /// Send one capture line. A leading `HH:mm` timestamp is added if the shared setting is on.
     /// Requires the main app to be signed in (its session is mirrored into the App Group).
-    public static func send(_ text: String) async throws {
+    /// - Parameter html: when true, `text` is already-formatted inline HTML (e.g. a titled
+    ///   `<a href>` link) — the server sanitizes it instead of escaping it to plain text.
+    public static func send(_ text: String, html: Bool = false) async throws {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw Failure(message: "Nothing to capture") }
         guard let base = AppGroup.serverURL, let cookie = AppGroup.sessionCookie else {
@@ -23,8 +25,8 @@ public enum Capture {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("rz_session=\(cookie)", forHTTPHeaderField: "Cookie")   // reuse the app's session
         let line = AppGroup.captureTimestamp ? "\(timestamp()) \(body)" : body
-        struct Body: Encodable { let text: String; let bullet: String }
-        request.httpBody = try JSONEncoder().encode(Body(text: line, bullet: AppGroup.captureBullet))
+        struct Body: Encodable { let text: String; let bullet: String; let html: Bool }
+        request.httpBody = try JSONEncoder().encode(Body(text: line, bullet: AppGroup.captureBullet, html: html))
 
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {

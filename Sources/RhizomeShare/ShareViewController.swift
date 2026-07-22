@@ -35,14 +35,21 @@ final class ShareViewController: SLComposeServiceViewController {
     }
 
     override func didSelectPost() {
-        var line = contentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let url = sharedURL, !line.contains(url) {
-            line = line.isEmpty ? url : "\(line) \(url)"
-        }
+        let comment = contentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = sharedURL
         let context = extensionContext
         Task {
             do {
-                try await Capture.send(line)
+                if let url, let u = URL(string: url) {
+                    // format the shared page as a clickable, titled link
+                    let title = (await LinkFormat.fetchTitle(u)) ?? u.host ?? url
+                    let anchor = LinkFormat.anchor(url: url, title: title)
+                    let noComment = comment.isEmpty || comment == url
+                    let body = noComment ? anchor : "\(HTMLEscape.text(comment)) \(anchor)"
+                    try await Capture.send(body, html: true)
+                } else {
+                    try await Capture.send(comment)
+                }
                 context?.completeRequest(returningItems: [], completionHandler: nil)
             } catch {
                 context?.cancelRequest(withError: error)
