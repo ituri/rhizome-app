@@ -33,7 +33,7 @@ public enum Journal {
     }
 
     /// Date → "July 16th, 2026" (the canonical journal-day title).
-    static func label(for date: Date) -> String {
+    public static func label(for date: Date) -> String {
         let cal = Calendar.current
         let day = cal.component(.day, from: date)
         let year = cal.component(.year, from: date)

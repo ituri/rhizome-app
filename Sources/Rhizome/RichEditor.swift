@@ -289,6 +289,7 @@ struct RichTextEditor: UIViewRepresentable {
         model.registerEditorResign { [weak tv] in _ = tv?.resignFirstResponder() }
         model.registerEditorHighlight { [weak coord = context.coordinator] name in coord?.applyHighlight(name) }
         model.registerEditorDeleteSlash { [weak coord = context.coordinator] in coord?.deleteSlashQuery() }
+        model.registerEditorInsertText { [weak coord = context.coordinator] t in coord?.insertPlainText(t) }
         model.registerEditorInline { [weak coord = context.coordinator] ch in coord?.applyInline(ch) }
         model.registerEditorTextColor { [weak coord = context.coordinator] name in coord?.applyTextColor(name) }
         model.registerEditorLink { [weak coord = context.coordinator] url in coord?.insertLink(url) }
@@ -465,6 +466,22 @@ struct RichTextEditor: UIViewRepresentable {
             m.deleteCharacters(in: NSRange(location: r.location, length: caret - r.location))
             tv.attributedText = m
             tv.selectedRange = NSRange(location: r.location, length: 0)
+            tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
+            textViewDidChange(tv)
+        }
+
+        /// Insert plain text at the caret (slash commands like /time, /today). The typed `/query`
+        /// was already removed by deleteSlashQuery, so this just splices at the current caret and
+        /// keeps typing plain. A `[[…]]` token inserted this way resolves to a link on blur.
+        func insertPlainText(_ text: String) {
+            guard let tv = textView else { return }
+            let ns = tv.attributedText.string as NSString
+            let caret = min(tv.selectedRange.location, ns.length)
+            let piece = NSAttributedString(string: text, attributes: [.font: RichEditor.font(), .foregroundColor: RichEditor.ink])
+            let m = NSMutableAttributedString(attributedString: tv.attributedText)
+            m.replaceCharacters(in: NSRange(location: caret, length: 0), with: piece)
+            tv.attributedText = m
+            tv.selectedRange = NSRange(location: caret + piece.length, length: 0)
             tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]
             textViewDidChange(tv)
         }

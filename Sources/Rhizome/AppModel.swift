@@ -383,6 +383,10 @@ final class AppModel {
     @ObservationIgnored var editorDeleteSlash: (@MainActor () -> Void)?
     func registerEditorDeleteSlash(_ f: @MainActor @escaping () -> Void) { editorDeleteSlash = f }
 
+    // Insert plain text at the caret (slash commands like /time, /today).
+    @ObservationIgnored var editorInsertText: (@MainActor (String) -> Void)?
+    func registerEditorInsertText(_ f: @MainActor @escaping (String) -> Void) { editorInsertText = f }
+
     // Toggle an inline format ("b"/"i"/"s"/"c") on the editor's selection.
     @ObservationIgnored var editorInline: (@MainActor (String) -> Void)?
     func registerEditorInline(_ f: @MainActor @escaping (String) -> Void) { editorInline = f }
@@ -552,6 +556,8 @@ final class AppModel {
             fmt("quote", "Quote", "text.quote", "quote"),
             fmt("code", "Code block", "curlybraces", "codeblock"),
             fmt("divider", "Divider", "minus", "divider"),
+            SlashCommand(id: "time", label: "Time", icon: "clock") { [weak self] in self?.insertCurrentTime() },
+            SlashCommand(id: "today", label: "Today", icon: "calendar") { [weak self] in self?.insertTodayLink() },
             SlashCommand(id: "done", label: "Complete", icon: "checkmark.circle") { [weak self] in self?.toggleDone(id) },
             SlashCommand(id: "duplicate", label: "Duplicate", icon: "plus.square.on.square") { [weak self] in self?.duplicate(id) },
             SlashCommand(id: "copylink", label: "Copy link", icon: "link") { [weak self] in self?.copyNodeLink(id) },
@@ -565,6 +571,21 @@ final class AppModel {
         editorDeleteSlash?()
         cmd.run()
         clearLinkSuggestions()
+    }
+
+    /// `/time` → insert the current `HH:mm` plus a trailing space at the caret (e.g. "21:23 ").
+    private func insertCurrentTime() {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"
+        editorInsertText?(f.string(from: Date()) + " ")
+    }
+
+    /// `/today` → insert a `[[…]]` wikilink to today's journal day. Ensures the day exists first so
+    /// the link resolves to it on blur instead of spawning a duplicate top-level page.
+    private func insertTodayLink() {
+        ensureToday()
+        editorInsertText?("[[\(Journal.label(for: Date()))]] ")
     }
 
     /// The query after the last `open` marker, or nil if that marker is already closed
