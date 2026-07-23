@@ -281,6 +281,12 @@ final class AppModel {
         return try? await api.stats()
     }
 
+    /// Admin-only: live server status. Returns nil for non-admins or on error.
+    func fetchServerStatus() async -> RServerStatus? {
+        guard let api else { return nil }
+        return try? await api.serverStatus()
+    }
+
     /// Permanently delete the account, then return to the signed-out state. Returns nil on
     /// success, else an error message.
     func deleteAccount(password: String) async -> String? {

@@ -36,6 +36,7 @@ struct SettingsView: View {
                     LabeledContent("User", value: model.user?.username ?? "—")
                     if model.user?.isAdmin == true {
                         LabeledContent("Role", value: "Admin")
+                        NavigationLink("Server status") { ServerStatusView() }
                     }
                     NavigationLink("Change password") { ChangePasswordView() }
                     NavigationLink("Statistics") { StatisticsView() }
@@ -314,6 +315,127 @@ private struct QuotaBar: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// Admin-only server status: uptime, last update, CPU/RAM/disk load, storage footprint and the
+/// health of each dependency. Backed by `GET /api/admin/status`.
+struct ServerStatusView: View {
+    @Environment(AppModel.self) private var model
+    @State private var status: RServerStatus?
+    @State private var loading = true
+
+    static func bytes(_ n: Double) -> String {
+        if n < 1_000 { return "\(Int(n)) B" }
+        if n < 1_000_000 { return String(format: "%.1f KB", n / 1e3) }
+        if n < 1_000_000_000 { return String(format: "%.1f MB", n / 1e6) }
+        return String(format: "%.2f GB", n / 1e9)
+    }
+
+    static func uptime(_ sec: Double) -> String {
+        let s = Int(sec), d = s / 86_400, h = (s % 86_400) / 3_600, m = (s % 3_600) / 60
+        var out = ""
+        if d > 0 { out += "\(d)d " }
+        if d > 0 || h > 0 { out += "\(h)h " }
+        return out + "\(m)m"
+    }
+
+    static func date(_ ms: Double?) -> String {
+        guard let ms else { return "—" }
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
+        return f.string(from: Date(timeIntervalSince1970: ms / 1000))
+    }
+
+    var body: some View {
+        Form {
+            if let s = status {
+                let usedMem = s.memory.systemTotal - s.memory.systemFree
+                let memPct = s.memory.systemTotal > 0 ? usedMem / s.memory.systemTotal * 100 : 0
+
+                Section("Runtime") {
+                    LabeledContent("Uptime", value: Self.uptime(s.uptimeSec))
+                    LabeledContent("Last update", value: Self.date(s.lastUpdate))
+                    LabeledContent("Version", value: s.version)
+                    LabeledContent("Node", value: s.node)
+                    LabeledContent("Host", value: s.hostname)
+                    LabeledContent("Platform", value: s.platform)
+                }
+
+                Section("Load") {
+                    MeterRow(label: "CPU",
+                             pct: s.cpu.loadPct ?? 0,
+                             detail: "\(s.cpu.loadPct.map { String(format: "%.0f%%", $0) } ?? "—") · \(s.cpu.cores) cores")
+                    if !s.cpu.model.isEmpty {
+                        Text(s.cpu.model).font(.caption).foregroundStyle(.secondary)
+                    }
+                    MeterRow(label: "RAM",
+                             pct: memPct,
+                             detail: "\(Self.bytes(usedMem)) / \(Self.bytes(s.memory.systemTotal))")
+                    LabeledContent("App memory", value: Self.bytes(s.memory.rss))
+                    if let disk = s.disk {
+                        MeterRow(label: "Disk",
+                                 pct: disk.total > 0 ? disk.used / disk.total * 100 : 0,
+                                 detail: "\(Self.bytes(disk.free)) free of \(Self.bytes(disk.total))")
+                    }
+                }
+
+                Section("Storage") {
+                    LabeledContent("Data", value: Self.bytes(s.storage.dataBytes))
+                    LabeledContent("Graphs", value: "\(s.storage.graphs)")
+                    LabeledContent("Backups", value: "\(s.storage.backups.count) · \(Self.bytes(s.storage.backups.bytes))")
+                    if let newest = s.storage.backups.newest {
+                        LabeledContent("Newest backup", value: Self.date(newest))
+                    }
+                }
+
+                Section("Dependencies") {
+                    ForEach(s.health) { h in
+                        HStack(spacing: 10) {
+                            Image(systemName: h.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundStyle(h.ok ? .green : .red)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(h.name)
+                                Text(h.detail).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            } else if loading {
+                Section { HStack { Spacer(); ProgressView(); Spacer() } }
+            } else {
+                Section { Text("Could not load server status.").foregroundStyle(.secondary) }
+            }
+        }
+        .paperBackground()
+        .navigationTitle("Server status")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { status = await model.fetchServerStatus(); loading = false }
+        .refreshable { status = await model.fetchServerStatus() }
+    }
+}
+
+private struct MeterRow: View {
+    let label: String
+    let pct: Double
+    let detail: String
+    var body: some View {
+        let p = max(0, min(100, pct))
+        let color: Color = p >= 90 ? .red : (p >= 75 ? .orange : .rzAccent)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.secondary.opacity(0.2))
+                    Capsule().fill(color).frame(width: geo.size.width * (p / 100))
+                }
+            }
+            .frame(height: 8)
+        }
+        .padding(.vertical, 2)
     }
 }
 

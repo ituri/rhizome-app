@@ -37,6 +37,58 @@ public struct RStats: Codable, Sendable {
     public var tolerancePct: Int
 }
 
+/// Admin-only server status (uptime, CPU/RAM/disk, storage footprint, dependency health).
+/// Mirrors `GET /api/admin/status`. Numeric fields are lenient (Double) so large byte counts
+/// decode regardless of the server's integer size.
+public struct RServerStatus: Codable, Sendable {
+    public struct CPU: Codable, Sendable {
+        public var cores: Int
+        public var model: String
+        public var load1: Double?
+        public var loadPct: Double?
+    }
+    public struct Memory: Codable, Sendable {
+        public var rss: Double
+        public var heapUsed: Double
+        public var heapTotal: Double
+        public var systemTotal: Double
+        public var systemFree: Double
+    }
+    public struct Disk: Codable, Sendable {
+        public var total: Double
+        public var free: Double
+        public var used: Double
+    }
+    public struct Backups: Codable, Sendable {
+        public var count: Int
+        public var newest: Double?
+        public var bytes: Double
+    }
+    public struct Storage: Codable, Sendable {
+        public var dataBytes: Double
+        public var graphs: Int
+        public var backups: Backups
+    }
+    public struct Health: Codable, Sendable, Identifiable {
+        public var name: String
+        public var ok: Bool
+        public var detail: String
+        public var id: String { name }
+    }
+    public var version: String
+    public var node: String
+    public var platform: String
+    public var hostname: String
+    public var uptimeSec: Double
+    public var startedAt: Double
+    public var lastUpdate: Double?
+    public var cpu: CPU
+    public var memory: Memory
+    public var disk: Disk?
+    public var storage: Storage
+    public var health: [Health]
+}
+
 /// Whether a file should render as an image — decided by its NAME extension (authoritative): a
 /// broken/edited extension (e.g. "Photo.jp") stops it rendering, and a missing mime type doesn't.
 public func looksLikeImage(_ s: String?) -> Bool {
@@ -193,6 +245,12 @@ public struct RhizomeAPI: Sendable {
     public func stats() async throws -> RStats {
         let data = try await get("api/me/stats")
         return try JSONDecoder().decode(RStats.self, from: data)
+    }
+
+    /// Admin-only: live server status. Throws (403) for non-admins.
+    public func serverStatus() async throws -> RServerStatus {
+        let data = try await get("api/admin/status")
+        return try JSONDecoder().decode(RServerStatus.self, from: data)
     }
 
     /// Save cross-device preferences (merged server-side with any existing prefs).
