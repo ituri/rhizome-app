@@ -19,9 +19,11 @@ final class ShareViewController: SLComposeServiceViewController {
         let types = [UTType.url.identifier, UTType.plainText.identifier, UTType.text.identifier]
         for type in types {
             guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(type) }) else { continue }
-            provider.loadItem(forTypeIdentifier: type, options: nil) { [weak self] value, _ in
+            // no `self` capture here → the background completion stays nonisolated; only the
+            // resolved URL string (Sendable) hops to the main actor.
+            provider.loadItem(forTypeIdentifier: type, options: nil) { value, _ in
                 guard let url = Self.coerceURL(value) else { return }
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     self.sharedURL = url
                     if self.contentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -35,7 +37,7 @@ final class ShareViewController: SLComposeServiceViewController {
     }
 
     /// Coerce a loaded share item (URL / NSURL / String / Data) into an http(s) URL string, else nil.
-    private static func coerceURL(_ value: Any?) -> String? {
+    nonisolated private static func coerceURL(_ value: Any?) -> String? {
         let s: String?
         switch value {
         case let u as URL: s = u.absoluteString
