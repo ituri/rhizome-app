@@ -72,9 +72,12 @@ final class ShareViewController: SLComposeServiceViewController {
         Task {
             do {
                 if let url, let u = URL(string: url) {
-                    // format the shared page as a clickable, titled link
-                    let title = (await LinkFormat.fetchTitle(u)) ?? u.host ?? url
-                    let anchor = LinkFormat.anchor(url: url, title: title)
+                    // format the shared page as a clickable, titled link. If the page can't be
+                    // scraped (bot walls like Reddit's), fall back to the URL slug, then the host.
+                    let r = await LinkFormat.resolve(u)
+                    let canonical = r.finalURL.absoluteString
+                    let title = r.title ?? LinkFormat.titleFromURL(r.finalURL) ?? LinkFormat.titleFromURL(u) ?? r.finalURL.host ?? url
+                    let anchor = LinkFormat.anchor(url: canonical, title: title)
                     let noComment = comment.isEmpty || comment == url
                     let body = noComment ? anchor : "\(HTMLEscape.text(comment)) \(anchor)"
                     try await Capture.send(body, html: true)
