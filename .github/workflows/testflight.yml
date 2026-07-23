@@ -123,6 +123,10 @@ jobs:
       # Archive WITH automatic (cloud) signing so each target's CODE_SIGN_ENTITLEMENTS — notably
       # the App Group — is baked into the signed binaries. An unsigned archive + sign-on-export
       # dropped the App Group entitlement (the extension then couldn't reach the shared container).
+      # Force the "Apple Distribution" identity: xtool's generated project defaults the targets to
+      # Development signing, so an archive otherwise provisions a *development* certificate per
+      # ephemeral runner — those pile up to Apple's certificate limit. Distribution signing reuses
+      # our imported persistent cert + App Store profiles and creates no new certs.
       - name: Archive
         run: |
           xcodebuild archive \
@@ -134,6 +138,7 @@ jobs:
             -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
             -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
             CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             MARKETING_VERSION="${{ steps.ver.outputs.marketing }}" \
             CURRENT_PROJECT_VERSION="${{ steps.ver.outputs.build }}"
