@@ -12,19 +12,48 @@ final class ShareViewController: SLComposeServiceViewController {
     private var sharedURL: String?
 
     override func presentationAnimationDidFinish() {
-        guard let item = extensionContext?.inputItems.first as? NSExtensionItem,
-              let providers = item.attachments else { return }
-        let urlType = UTType.url.identifier
-        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(urlType) }) else { return }
-        provider.loadItem(forTypeIdentifier: urlType, options: nil) { [weak self] value, _ in
-            guard let url = value as? URL else { return }
-            DispatchQueue.main.async {
-                self?.sharedURL = url.absoluteString
-                if (self?.contentText ?? "").isEmpty {
-                    self?.textView.text = url.absoluteString
+        // Extract a URL from whatever the sharing app handed us. Safari gives a clean public.url
+        // item, but many apps (e.g. Reddit) share the link only as plain text, or deliver the URL
+        // value as a String/Data rather than a URL object — so accept all of those.
+        let providers = (extensionContext?.inputItems as? [NSExtensionItem])?.flatMap { $0.attachments ?? [] } ?? []
+        let types = [UTType.url.identifier, UTType.plainText.identifier, UTType.text.identifier]
+        for type in types {
+            guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(type) }) else { continue }
+            provider.loadItem(forTypeIdentifier: type, options: nil) { [weak self] value, _ in
+                guard let url = Self.coerceURL(value) else { return }
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.sharedURL = url
+                    if self.contentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.textView.text = url
+                    }
+                    self.validateContent()   // re-enable the Post button now that we have a URL
                 }
             }
+            return
         }
+    }
+
+    /// Coerce a loaded share item (URL / NSURL / String / Data) into an http(s) URL string, else nil.
+    private static func coerceURL(_ value: Any?) -> String? {
+        let s: String?
+        switch value {
+        case let u as URL: s = u.absoluteString
+        case let n as NSURL: s = n.absoluteString
+        case let str as String: s = str
+        case let data as Data: s = String(data: data, encoding: .utf8)
+        default: s = nil
+        }
+        guard let s, !s.isEmpty else { return nil }
+        // pull the first http(s) URL out of the string (handles "some text https://…" shares)
+        if let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) {
+            let ns = s as NSString
+            if let m = detector.firstMatch(in: s, range: NSRange(location: 0, length: ns.length)),
+               let u = m.url, (u.scheme == "http" || u.scheme == "https") {
+                return u.absoluteString
+            }
+        }
+        return (s.hasPrefix("http://") || s.hasPrefix("https://")) ? s : nil
     }
 
     override func isContentValid() -> Bool {
