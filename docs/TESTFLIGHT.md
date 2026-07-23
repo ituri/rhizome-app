@@ -64,15 +64,21 @@ on Linux with `openssl`.
    openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12 -passout pass:CHOOSE_A_PASSWORD
    base64 -w0 dist.p12          # → the APPLE_DIST_CERT_P12_BASE64 secret
    ```
-4. **Add two secrets:**
+4. **Do the same for an *Apple Development* certificate.** xtool signs the *archive* for
+   Development (the export re-signs for Distribution), so the CI needs a persistent dev cert too —
+   otherwise each runner mints a development cert and you hit the limit again. Repeat steps 1–3 but
+   pick **Apple Development** in step 2 (`dev.key` / `dev.csr` / `development.cer` / `dev.p12`).
+5. **Add the secrets:**
 
 | Secret | What it is |
 |---|---|
-| `APPLE_DIST_CERT_P12_BASE64` | The `dist.p12`, base64-encoded (step 3). |
-| `APPLE_DIST_CERT_PASSWORD` | The export password you chose in step 3. |
+| `APPLE_DIST_CERT_P12_BASE64` | The Distribution `dist.p12`, base64-encoded. |
+| `APPLE_DIST_CERT_PASSWORD` | The Distribution `.p12` export password. |
+| `APPLE_DEV_CERT_P12_BASE64` | The Development `dev.p12`, base64-encoded. |
+| `APPLE_DEV_CERT_PASSWORD` | The Development `.p12` export password. |
 
-Keep `dist.key` / `dist.p12` **safe and out of git** — the `.p12` is your distribution identity.
-The certificate is valid ~1 year; regenerate the same way when it expires. If the secret is absent
+Keep the `.key` / `.p12` files **safe and out of git** — they are your signing identities. Certs
+are valid ~1 year; regenerate the same way when they expire. If the Distribution secret is absent
 the workflow silently falls back to cloud signing.
 
 ## Running it
