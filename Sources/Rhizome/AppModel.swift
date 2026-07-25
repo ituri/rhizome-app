@@ -814,6 +814,14 @@ final class AppModel {
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(next)])])
     }
 
+    /// Append a dictated transcript (plain text) to a bullet, HTML-escaped so it can't inject
+    /// markup, reusing the same live-buffer-aware append path as the geo link.
+    func insertTranscript(_ text: String, to id: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, doc?.nodes[id] != nil else { return }
+        appendGeo(to: id, source: Self.escapeHTML(trimmed))
+    }
+
     private static func escapeHTML(_ s: String) -> String {
         s.replacingOccurrences(of: "&", with: "&amp;")
          .replacingOccurrences(of: "<", with: "&lt;")

@@ -235,6 +235,8 @@ struct KeyboardAccessory: View {
     @State private var attachTarget: String?   // node to attach to, captured before the picker steals focus
     @State private var showLinkAlert = false
     @State private var linkText = ""
+    @State private var showDictation = false
+    @State private var audioTarget: String?    // node to receive the transcript, captured before the sheet steals focus
 
     // The picker/dialog modifiers live here (always in the tree), NOT on `bar` — presenting a
     // picker resigns the editor, which can clear editingID and remove `bar`; if the presenters
@@ -271,6 +273,13 @@ struct KeyboardAccessory: View {
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { image in attach(image, to: attachTarget) }
                 .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showDictation, onDismiss: { model.suppressBlur = false }) {
+            DictationSheet { transcript in
+                guard let id = audioTarget, !transcript.isEmpty else { return }
+                model.insertTranscript(transcript, to: id)
+                model.beginEdit(id)   // reopen the bullet so you can keep editing
+            }
         }
         .alert("Add link", isPresented: $showLinkAlert) {
             TextField("https://…", text: $linkText)
@@ -425,6 +434,12 @@ struct KeyboardAccessory: View {
             } primaryAction: {
                 Task { await model.insertGeoLink(resolveAddress: model.geoResolveAddress) }
             }
+        case .audio:
+            Button {
+                audioTarget = model.editingID
+                model.suppressBlur = true      // keep the editor's node "active" while the sheet is up
+                showDictation = true
+            } label: { Image(systemName: tool.icon) }
         case .todo:
             Button { runTool(tool) } label: {
                 Image(systemName: editingFormat == "todo" ? "checkmark.circle.fill" : "checkmark.circle")

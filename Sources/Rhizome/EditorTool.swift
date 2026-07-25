@@ -7,7 +7,7 @@ enum EditorTool: String, CaseIterable, Identifiable, Codable {
     case bold, italic, underline, strikethrough, code
     case link, textColor, highlight
     case todo, numbered
-    case image, geo
+    case image, geo, audio
 
     var id: String { rawValue }
 
@@ -29,6 +29,7 @@ enum EditorTool: String, CaseIterable, Identifiable, Codable {
         case .numbered: "Numbered list"
         case .image: "Image"
         case .geo: "Location"
+        case .audio: "Audio note"
         }
     }
 
@@ -50,10 +51,11 @@ enum EditorTool: String, CaseIterable, Identifiable, Codable {
         case .numbered: "list.number"
         case .image: "photo"
         case .geo: "location"
+        case .audio: "mic"
         }
     }
 
     /// The default toolbar (a lean set); the rest are available to add in Settings.
     static let defaultOrder: [EditorTool] =
-        [.outdent, .indent, .bold, .italic, .link, .highlight, .todo, .image, .geo]
+        [.outdent, .indent, .bold, .italic, .link, .highlight, .todo, .image, .audio, .geo]
 }
