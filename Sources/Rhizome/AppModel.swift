@@ -1432,7 +1432,13 @@ final class AppModel {
 
         // find days/months/years by their STABLE calendar fields (cd/cm/cy), not the editable title,
         // so renaming a day doesn't cause a duplicate to be created (matches the web)
-        if doc.nodes.values.contains(where: { $0.cal == "day" && $0.cd == cd }) {
+        if let existing = doc.nodes.first(where: { $0.value.cal == "day" && $0.value.cd == cd })?.key {
+            // The day is already there (web app, an earlier session, or all its bullets were
+            // deleted) — make sure it still has an empty bullet to type into, otherwise the day
+            // renders with no rows and there's nothing to tap.
+            if doc.nodes[existing]?.children?.isEmpty ?? true {
+                _ = insertChild(of: existing)
+            }
             ensuredDay = cd
             return
         }
