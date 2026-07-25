@@ -200,15 +200,24 @@ final class Dictation {
     // MARK: - Permissions & model assets
 
     private func authorize() async throws {
-        let micOK = await withCheckedContinuation { cont in
+        guard await Self.requestMicrophone() else { throw DictationError.micDenied }
+        guard await Self.requestSpeech() == .authorized else { throw DictationError.speechDenied }
+    }
+
+    // These privacy prompts invoke their completion handler on an arbitrary background queue. The
+    // wrappers MUST be `nonisolated` so the closures don't inherit this class's @MainActor isolation
+    // — otherwise the Swift 6 runtime asserts main-actor isolation when the callback fires off-main
+    // and traps (EXC_BREAKPOINT in swift_task_checkIsolated → dispatch_assert_queue).
+    private nonisolated static func requestMicrophone() async -> Bool {
+        await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
             AVAudioApplication.requestRecordPermission { cont.resume(returning: $0) }
         }
-        guard micOK else { throw DictationError.micDenied }
+    }
 
-        let status = await withCheckedContinuation { cont in
+    private nonisolated static func requestSpeech() async -> SFSpeechRecognizerAuthorizationStatus {
+        await withCheckedContinuation { (cont: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
             SFSpeechRecognizer.requestAuthorization { cont.resume(returning: $0) }
         }
-        guard status == .authorized else { throw DictationError.speechDenied }
     }
 
     /// Download + install the on-device model for this locale on first use (a one-time, ~cached step).
