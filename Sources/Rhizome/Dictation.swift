@@ -116,10 +116,7 @@ final class Dictation {
                 throw DictationError.noConverter
             }
             let box = ConverterBox(converter, analyzerFormat)
-            input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
-                guard let converted = Self.convert(buffer, with: box) else { return }
-                continuation.yield(AnalyzerInput(buffer: converted))
-            }
+            Self.installTap(on: input, format: inputFormat, box: box, into: continuation)
             engine.prepare()
             try engine.start()
 
@@ -177,9 +174,24 @@ final class Dictation {
 
     // MARK: - Audio conversion (realtime thread)
 
+    /// Install the mic tap. MUST be `nonisolated` so the tap closure doesn't inherit this class's
+    /// @MainActor isolation — the tap fires on a realtime audio queue, and a main-actor-isolated
+    /// closure would trip the Swift 6 executor check there (EXC_BREAKPOINT in swift_task_checkIsolated
+    /// → dispatch_assert_queue on RealtimeMessenger.mServiceQueue). It captures only Sendable values
+    /// (the boxed converter + the stream continuation) and calls the nonisolated `convert`.
+    private nonisolated static func installTap(on input: AVAudioInputNode,
+                                               format: AVAudioFormat,
+                                               box: ConverterBox,
+                                               into continuation: AsyncStream<AnalyzerInput>.Continuation) {
+        input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+            guard let converted = convert(buffer, with: box) else { return }
+            continuation.yield(AnalyzerInput(buffer: converted))
+        }
+    }
+
     /// Resample/repackage a mic buffer into the analyzer's preferred format. Runs on the audio tap
-    /// thread, so it touches only the boxed converter — no main-actor state.
-    private static func convert(_ buffer: AVAudioPCMBuffer, with box: ConverterBox) -> AVAudioPCMBuffer? {
+    /// thread (`nonisolated`), so it touches only the boxed converter — no main-actor state.
+    private nonisolated static func convert(_ buffer: AVAudioPCMBuffer, with box: ConverterBox) -> AVAudioPCMBuffer? {
         let ratio = box.format.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
         guard capacity > 0, let out = AVAudioPCMBuffer(pcmFormat: box.format, frameCapacity: capacity) else { return nil }
