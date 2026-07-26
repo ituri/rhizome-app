@@ -101,61 +101,10 @@ struct SettingsView: View {
                     if model.graphs.count > 1 { Text("Tap a graph to switch to it.") }
                 }
 
-                // ---- Appearance ----
+                // ---- Customization (own sub-pages to keep this list short) ----
                 Section {
-                    Picker("Theme", selection: $model.theme) {
-                        ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
-                    }
-                    Picker("Accent", selection: $model.accent) {
-                        ForEach(AccentChoice.allCases) { a in
-                            HStack {
-                                Circle().fill(rzAccentColor(a)).frame(width: 14, height: 14)
-                                Text(a.label)
-                            }.tag(a)
-                        }
-                    }
-                    Stepper(value: $model.fontSize, in: 12...28, step: 0.5) {
-                        LabeledContent("Font size", value: String(format: "%.1f pt", model.fontSize))
-                    }
-                    Stepper(value: $model.lineSpacing, in: 0...14, step: 1) {
-                        LabeledContent("Line spacing", value: String(format: "%.0f pt", model.lineSpacing))
-                    }
-                    Toggle("Scale with system text size", isOn: $model.scaleWithSystem)
-                    Toggle("Enlarge the line you're editing", isOn: $model.enlargeActiveLine)
-                    // live preview of size, spacing and accent (tag + link tones)
-                    Text(RichText.attributed("The quick #brown fox jumps over the lazy dog.", doc: nil))
-                        .font(model.scaleWithSystem ? .rz(model.fontSize) : .rzFixed(model.fontSize))
-                        .lineSpacing(model.lineSpacing)
-                        .foregroundStyle(Color.rzInk)
-                    Button("Reset to defaults", role: .destructive) { model.resetDesign() }
-                } header: {
-                    Text("Appearance")
-                } footer: {
-                    Text("With scaling off, text stays a fixed size so the line you're editing matches the rest.")
-                }
-
-                // ---- Editing behaviour ----
-                Section {
-                    Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
-                    LabeledContent("Capture bullet") {
-                        TextField("Inbox", text: $model.captureBullet)
-                            .multilineTextAlignment(.trailing)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.words)
-                            .submitLabel(.done)
-                    }
-                    Toggle("Haptic feedback", isOn: $model.haptics)
-                    Toggle("Resolve location address", isOn: $model.geoResolveAddress)
-                    NavigationLink {
-                        DictationLanguageView()
-                    } label: {
-                        LabeledContent("Dictation language", value: model.dictationLanguageLabel)
-                    }
-                    NavigationLink("Editor toolbar") { EditorToolbarView() }
-                } header: {
-                    Text("Behaviour")
-                } footer: {
-                    Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices. Quick capture (the + button, the share sheet and the Home Screen widget) files notes under the “Capture bullet” in today’s journal — “Inbox” by default. With “Resolve location address” on, a tap of the location button reverse-geocodes a new tag to its street address; off keeps the raw coordinates. Long-press the button to choose either way for a single tag.")
+                    NavigationLink("Appearance") { AppearanceSettingsView() }
+                    NavigationLink("Behaviour") { BehaviourSettingsView() }
                 }
 
                 // ---- Uploads ----
@@ -204,6 +153,81 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+}
+
+/// Appearance sub-page — theme, accent, text size/spacing and the editor-size options.
+struct AppearanceSettingsView: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        @Bindable var model = model
+        Form {
+            Section {
+                Picker("Theme", selection: $model.theme) {
+                    ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
+                }
+                Picker("Accent", selection: $model.accent) {
+                    ForEach(AccentChoice.allCases) { a in
+                        HStack {
+                            Circle().fill(rzAccentColor(a)).frame(width: 14, height: 14)
+                            Text(a.label)
+                        }.tag(a)
+                    }
+                }
+                Stepper(value: $model.fontSize, in: 12...28, step: 0.5) {
+                    LabeledContent("Font size", value: String(format: "%.1f pt", model.fontSize))
+                }
+                Stepper(value: $model.lineSpacing, in: 0...14, step: 1) {
+                    LabeledContent("Line spacing", value: String(format: "%.0f pt", model.lineSpacing))
+                }
+                Toggle("Scale with system text size", isOn: $model.scaleWithSystem)
+                Toggle("Enlarge the line you're editing", isOn: $model.enlargeActiveLine)
+                // live preview of size, spacing and accent (tag + link tones)
+                Text(RichText.attributed("The quick #brown fox jumps over the lazy dog.", doc: nil))
+                    .font(model.scaleWithSystem ? .rz(model.fontSize) : .rzFixed(model.fontSize))
+                    .lineSpacing(model.lineSpacing)
+                    .foregroundStyle(Color.rzInk)
+                Button("Reset to defaults", role: .destructive) { model.resetDesign() }
+            } footer: {
+                Text("With scaling off, text stays a fixed size so the line you're editing matches the rest.")
+            }
+        }
+        .paperBackground()
+        .navigationTitle("Appearance")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Behaviour sub-page — capture, haptics, location, and links to the toolbar / dictation language.
+struct BehaviourSettingsView: View {
+    @Environment(AppModel.self) private var model
+    var body: some View {
+        @Bindable var model = model
+        Form {
+            Section {
+                Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
+                LabeledContent("Capture bullet") {
+                    TextField("Inbox", text: $model.captureBullet)
+                        .multilineTextAlignment(.trailing)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                }
+                Toggle("Haptic feedback", isOn: $model.haptics)
+                Toggle("Resolve location address", isOn: $model.geoResolveAddress)
+                NavigationLink {
+                    DictationLanguageView()
+                } label: {
+                    LabeledContent("Dictation language", value: model.dictationLanguageLabel)
+                }
+                NavigationLink("Editor toolbar") { EditorToolbarView() }
+            } footer: {
+                Text("Timestamped notes are prefixed with the time like the r command — this preference is shared with the web app and your other devices. Quick capture (the + button, the share sheet and the Home Screen widget) files notes under the “Capture bullet” in today’s journal — “Inbox” by default. With “Resolve location address” on, a tap of the location button reverse-geocodes a new tag to its street address; off keeps the raw coordinates. Long-press the button to choose either way for a single tag.")
+            }
+        }
+        .paperBackground()
+        .navigationTitle("Behaviour")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
