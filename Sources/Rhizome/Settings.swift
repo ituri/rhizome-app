@@ -96,6 +96,7 @@ struct SettingsView: View {
                         LabeledContent("Line spacing", value: String(format: "%.0f pt", model.lineSpacing))
                     }
                     Toggle("Scale with system text size", isOn: $model.scaleWithSystem)
+                    Toggle("Enlarge the line you're editing", isOn: $model.enlargeActiveLine)
                     // live preview of size, spacing and accent (tag + link tones)
                     Text(RichText.attributed("The quick #brown fox jumps over the lazy dog.", doc: nil))
                         .font(model.scaleWithSystem ? .rz(model.fontSize) : .rzFixed(model.fontSize))

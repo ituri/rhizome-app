@@ -196,6 +196,9 @@ struct OutlineRow: View {
                     // can rename it, place the cursor, and press Return for a new line beneath it
                     RichTextEditor(model: model, id: id, source: model.editText)
                         .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
+                        // the UITextView renders a hair larger than the SwiftUI display text; scale
+                        // the active line down to match the rest unless the user keeps the emphasis
+                        .scaleEffect(model.enlargeActiveLine ? 1 : 0.95, anchor: .leading)
                 } else if hasFiles {
                     attachments   // tap → edit (reveals the file name); long-press → full screen
                 } else {
@@ -374,9 +377,14 @@ struct KeyboardAccessory: View {
                                         : model.linkSuggestKind == .block ? "text.quote"
                                         : model.linkSuggestKind == .tag ? "number" : "link")
                                     Text(s.isCreate ? "Create “\(s.title)”" : s.title).lineLimit(1)
-                                    // linked-reference / usage count, Roam-style (not for the "Create" chip or blocks)
+                                    // linked-reference / usage count, Roam-style (not for the "Create" chip or blocks).
+                                    // fill the row height + center so the small number sits vertically centred
+                                    // regardless of the leading icon's glyph metrics (link vs #).
                                     if !s.isCreate, model.linkSuggestKind != .block {
-                                        Text("\(s.count)").font(.rz(11)).foregroundStyle(Color.rzInkFaint)
+                                        Text("\(s.count)")
+                                            .font(.rz(11))
+                                            .foregroundStyle(Color.rzInkFaint)
+                                            .frame(maxHeight: .infinity, alignment: .center)
                                     }
                                 }
                                 .font(.rz(15))
