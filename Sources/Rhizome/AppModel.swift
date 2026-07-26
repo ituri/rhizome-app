@@ -136,6 +136,18 @@ final class AppModel {
         didSet { UserDefaults.standard.set(geoResolveAddress, forKey: "geoResolveAddress") }
     }
 
+    /// Dictation (audio note) language as a BCP-47 identifier, or nil = automatic (follow the
+    /// device's preferred languages). Persisted locally.
+    var dictationLocaleID: String? {
+        didSet { UserDefaults.standard.set(dictationLocaleID, forKey: "dictationLocaleID") }
+    }
+
+    /// A readable label for the current dictation-language choice (for the Settings row).
+    var dictationLanguageLabel: String {
+        guard let id = dictationLocaleID else { return "Automatic" }
+        return Locale.current.localizedString(forIdentifier: id) ?? id
+    }
+
     /// Require Face ID / Touch ID to open the app.
     var appLock: Bool {
         didSet { UserDefaults.standard.set(appLock, forKey: "appLock"); if !appLock { locked = false } }
@@ -201,6 +213,7 @@ final class AppModel {
         imageScalePercent = UserDefaults.standard.object(forKey: "imageScalePercent") as? Double ?? 100
         haptics = UserDefaults.standard.object(forKey: "haptics") as? Bool ?? true
         geoResolveAddress = UserDefaults.standard.object(forKey: "geoResolveAddress") as? Bool ?? true
+        dictationLocaleID = UserDefaults.standard.string(forKey: "dictationLocaleID")
         appLock = UserDefaults.standard.object(forKey: "appLock") as? Bool ?? false
         scaleWithSystem = UserDefaults.standard.object(forKey: "scaleWithSystem") as? Bool ?? false
         editorTools = (UserDefaults.standard.array(forKey: "editorTools") as? [String])?.compactMap(EditorTool.init) ?? EditorTool.defaultOrder

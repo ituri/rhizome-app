@@ -275,7 +275,7 @@ struct KeyboardAccessory: View {
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showDictation, onDismiss: { model.suppressBlur = false }) {
-            DictationSheet { transcript in
+            DictationSheet(preferredLocaleID: model.dictationLocaleID) { transcript in
                 guard let id = audioTarget, !transcript.isEmpty else { return }
                 model.insertTranscript(transcript, to: id)
                 model.beginEdit(id)   // reopen the bullet so you can keep editing

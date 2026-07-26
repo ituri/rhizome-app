@@ -15,6 +15,7 @@ final class Dictation {
     private(set) var draft = ""              // the in-progress (volatile) tail
     private(set) var errorText: String?
     private(set) var recordingStart: Date?   // for the elapsed-time readout in the sheet
+    private(set) var localeName: String?     // the resolved recognition language, shown in the sheet
 
     /// The full transcript so far (committed segments plus the live tail).
     var text: String {
@@ -59,15 +60,17 @@ final class Dictation {
         init(_ source: AVAudioPCMBuffer) { self.source = source }
     }
 
-    func start() async {
+    func start(preferredLocaleID: String? = nil) async {
         guard phase == .idle else { return }
         phase = .preparing
         errorText = nil
         finalized = ""; draft = ""
+        localeName = nil
         do {
             try await authorize()
 
-            guard let locale = await Self.bestLocale() else { throw DictationError.noLocale }
+            guard let locale = await Self.resolveLocale(preferred: preferredLocaleID) else { throw DictationError.noLocale }
+            localeName = Self.displayName(for: locale)
             let transcriber = SpeechTranscriber(locale: locale,
                                                 transcriptionOptions: [],
                                                 reportingOptions: [.volatileResults],
@@ -242,21 +245,42 @@ final class Dictation {
         }
     }
 
-    /// Pick the closest supported locale to the device's — exact match, else same language, else English.
-    private static func bestLocale() async -> Locale? {
+    /// Resolve the recognition locale. An explicit `preferred` BCP-47 id wins (the Settings choice);
+    /// otherwise pick automatically by walking the user's *preferred languages* in order (so German
+    /// is chosen even when the UI language is English), then the device language, then English.
+    private static func resolveLocale(preferred: String?) async -> Locale? {
         let supported = await SpeechTranscriber.supportedLocales
         guard !supported.isEmpty else { return nil }
-        let want = Locale.current.identifier(.bcp47)
-        if let hit = supported.first(where: { $0.identifier(.bcp47) == want }) { return hit }
-        let lang = Locale.current.language.languageCode?.identifier
-        if let hit = supported.first(where: { $0.language.languageCode?.identifier == lang }) { return hit }
+
+        if let preferred, let hit = supported.first(where: { $0.identifier(.bcp47) == preferred }) { return hit }
+
+        var candidates = Locale.preferredLanguages.map(Locale.init(identifier:))
+        candidates.append(Locale.current)
+        for cand in candidates {
+            if let hit = supported.first(where: { $0.identifier(.bcp47) == cand.identifier(.bcp47) }) { return hit }
+            if let lang = cand.language.languageCode?.identifier,
+               let hit = supported.first(where: { $0.language.languageCode?.identifier == lang }) { return hit }
+        }
         return supported.first(where: { $0.identifier(.bcp47).hasPrefix("en") }) ?? supported.first
+    }
+
+    /// The languages the on-device transcriber supports, sorted by localized name — for the picker.
+    nonisolated static func supportedLocales() async -> [Locale] {
+        let supported = await SpeechTranscriber.supportedLocales
+        return supported.sorted { displayName(for: $0).localizedCompare(displayName(for: $1)) == .orderedAscending }
+    }
+
+    /// A human-readable language name for a locale, e.g. "Deutsch (Deutschland)".
+    nonisolated static func displayName(for locale: Locale) -> String {
+        Locale.current.localizedString(forIdentifier: locale.identifier(.bcp47))
+            ?? locale.identifier(.bcp47)
     }
 }
 
 /// The recording overlay: starts dictating on appear, shows the live transcript and elapsed time,
 /// and hands the finished text back via `onDone` (empty string ⇒ nothing to insert).
 struct DictationSheet: View {
+    var preferredLocaleID: String?
     var onDone: (String) -> Void
     @State private var dictation = Dictation()
     @Environment(\.dismiss) private var dismiss
@@ -278,7 +302,7 @@ struct DictationSheet: View {
                     Button("Abbrechen") { Task { await dictation.cancel(); onDone(""); dismiss() } }
                 }
             }
-            .task { await dictation.start() }
+            .task { await dictation.start(preferredLocaleID: preferredLocaleID) }
             .interactiveDismissDisabled(dictation.phase == .recording)
         }
     }
@@ -289,13 +313,18 @@ struct DictationSheet: View {
             Label("Wird vorbereitet …", systemImage: "hourglass")
                 .font(.rz(15)).foregroundStyle(.secondary)
         case .recording:
-            HStack(spacing: 10) {
-                PulsingDot()
-                if let start = dictation.recordingStart {
-                    TimelineView(.periodic(from: start, by: 0.5)) { ctx in
-                        Text(Self.elapsed(from: start, to: ctx.date))
-                            .font(.rzFixed(17, .medium)).monospacedDigit()
+            VStack(spacing: 4) {
+                HStack(spacing: 10) {
+                    PulsingDot()
+                    if let start = dictation.recordingStart {
+                        TimelineView(.periodic(from: start, by: 0.5)) { ctx in
+                            Text(Self.elapsed(from: start, to: ctx.date))
+                                .font(.rzFixed(17, .medium)).monospacedDigit()
+                        }
                     }
+                }
+                if let lang = dictation.localeName {
+                    Text(lang).font(.rz(13)).foregroundStyle(.secondary)
                 }
             }
         case .transcribing:

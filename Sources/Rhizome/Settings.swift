@@ -120,6 +120,11 @@ struct SettingsView: View {
                     }
                     Toggle("Haptic feedback", isOn: $model.haptics)
                     Toggle("Resolve location address", isOn: $model.geoResolveAddress)
+                    NavigationLink {
+                        DictationLanguageView()
+                    } label: {
+                        LabeledContent("Dictation language", value: model.dictationLanguageLabel)
+                    }
                     NavigationLink("Editor toolbar") { EditorToolbarView() }
                 } header: {
                     Text("Behaviour")
@@ -530,5 +535,59 @@ struct EditorToolbarView: View {
         .navigationTitle("Editor toolbar")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { EditButton() }
+    }
+}
+
+/// Pick the language used for audio-note dictation: Automatic (follow the device's preferred
+/// languages) or one of the on-device transcriber's supported languages.
+struct DictationLanguageView: View {
+    @Environment(AppModel.self) private var model
+    @State private var locales: [Locale] = []
+    @State private var loading = true
+
+    var body: some View {
+        List {
+            Section {
+                row(title: "Automatic", id: nil, subtitle: "Follows your preferred languages")
+            }
+            Section {
+                if loading {
+                    HStack { Spacer(); ProgressView(); Spacer() }
+                } else {
+                    ForEach(locales, id: \.identifier) { loc in
+                        row(title: Dictation.displayName(for: loc), id: loc.identifier(.bcp47), subtitle: nil)
+                    }
+                }
+            } header: {
+                Text("Languages")
+            } footer: {
+                Text("On-device transcription. A language downloads its model the first time you use it.")
+            }
+        }
+        .paperBackground()
+        .navigationTitle("Dictation language")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            locales = await Dictation.supportedLocales()
+            loading = false
+        }
+    }
+
+    private func row(title: String, id: String?, subtitle: String?) -> some View {
+        Button {
+            model.dictationLocaleID = id
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    if let subtitle { Text(subtitle).font(.rz(12)).foregroundStyle(.secondary) }
+                }
+                Spacer()
+                if model.dictationLocaleID == id {
+                    Image(systemName: "checkmark").foregroundStyle(Color.rzAccent)
+                }
+            }
+        }
+        .tint(.primary)
     }
 }
