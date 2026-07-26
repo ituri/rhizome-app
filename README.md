@@ -34,6 +34,10 @@ screen) and sign in with your account.
 - **Page history** — view past versions of a page, see a diff, and restore.
 - **Location** — attach your current coordinates to a note; addresses are
   reverse-geocoded and shown on an OpenStreetMap map.
+- **Audio notes** — a microphone tool records speech and transcribes it fully
+  on-device (iOS 26 `SpeechAnalyzer`/`SpeechTranscriber`, no network, the audio
+  is never stored) straight into the bullet. The dictation language is
+  Automatic (follows your preferred languages) or a fixed pick in Settings.
 - **Appearance & security** — light/dark theme, accent colour, font size and line
   spacing, image-downscale percentage, Face ID / Touch ID lock, haptics, change
   password, delete account. The *timestamp quick-capture* preference syncs across
@@ -151,6 +155,8 @@ Sources/RhizomeShare/
 
 ## Roadmap
 
-- Home-screen widget / App Shortcut for one-tap capture.
-- Push notifications (needs a paid Apple Developer account).
+- Push notifications for reminders (a paid Apple Developer account is in place;
+  pairs with the web reminders/recurring feature).
 - An iPad-optimised layout (the app is iPhone-only for now).
+- Feature parity as the web app grows (e.g. an in-app view for spaced-repetition
+  cards and saved queries once those land on the web).
