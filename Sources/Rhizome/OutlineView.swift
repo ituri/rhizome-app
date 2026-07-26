@@ -377,14 +377,11 @@ struct KeyboardAccessory: View {
                                         : model.linkSuggestKind == .block ? "text.quote"
                                         : model.linkSuggestKind == .tag ? "number" : "link")
                                     Text(s.isCreate ? "Create “\(s.title)”" : s.title).lineLimit(1)
-                                    // linked-reference / usage count, Roam-style (not for the "Create" chip or blocks).
-                                    // fill the row height + center so the small number sits vertically centred
-                                    // regardless of the leading icon's glyph metrics (link vs #).
+                                    // linked-reference / usage count, Roam-style (not for the "Create" chip or blocks)
                                     if !s.isCreate, model.linkSuggestKind != .block {
                                         Text("\(s.count)")
                                             .font(.rz(11))
                                             .foregroundStyle(Color.rzInkFaint)
-                                            .frame(maxHeight: .infinity, alignment: .center)
                                     }
                                 }
                                 .font(.rz(15))
