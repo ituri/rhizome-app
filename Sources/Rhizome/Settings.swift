@@ -27,6 +27,22 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
+    /// Connection indicator: green = up to date, yellow = syncing, red = last save failed / offline.
+    private var syncDotColor: Color {
+        switch model.syncState {
+        case .synced: .green
+        case .syncing: .yellow
+        case .error: .red
+        }
+    }
+    private var syncDotLabel: String {
+        switch model.syncState {
+        case .synced: "Synced"
+        case .syncing: "Syncing"
+        case .error: "Disconnected"
+        }
+    }
+
     var body: some View {
         @Bindable var model = model
         NavigationStack {
@@ -47,10 +63,19 @@ struct SettingsView: View {
 
                 // ---- Connection (server + graph) ----
                 Section {
-                    TextField("Server URL", text: $model.serverURLString)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
+                    HStack(spacing: 8) {
+                        TextField("Server URL", text: $model.serverURLString)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                        Circle()
+                            .fill(syncDotColor)
+                            .frame(width: 9, height: 9)
+                            .accessibilityLabel(syncDotLabel)
+                    }
+                    Button("Reload from server") {
+                        Task { await model.loadDoc(); dismiss() }
+                    }
                     if let graph = model.activeGraph {
                         LabeledContent("Graph", value: graph.name)
                     }
@@ -159,30 +184,6 @@ struct SettingsView: View {
                     Text("Shown in the web app's page history, so you can tell which device made a change.")
                 }
 
-                // ---- Sync & diagnostics ----
-                Section("Sync & diagnostics") {
-                    LabeledContent("Status") {
-                        switch model.syncState {
-                        case .syncing: Text("Saving…").foregroundStyle(.secondary)
-                        case .error: Text("Last save failed").foregroundStyle(.orange)
-                        case .synced: Text("Up to date").foregroundStyle(.secondary)
-                        }
-                    }
-                    Button("Reload from server") {
-                        Task { await model.loadDoc(); dismiss() }
-                    }
-                    LabeledContent("Last sync") {
-                        Text(model.lastSync).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Button("Run sync self-test") {
-                        Task { await model.syncSelfTest() }
-                    }
-                    Text(model.selfTestResult)
-                        .font(.caption)
-                        .foregroundStyle(model.selfTestResult.hasPrefix("✗") ? .orange : .secondary)
-                        .textSelection(.enabled)
-                }
-
                 // ---- Sign out ----
                 Section {
                     Button("Sign out", role: .destructive) {
@@ -265,6 +266,12 @@ struct StatisticsView: View {
 
     var body: some View {
         Form {
+            Section("Sync") {
+                LabeledContent("Last sync") {
+                    Text(model.lastSyncAt.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "—")
+                        .foregroundStyle(.secondary)
+                }
+            }
             if let s = stats {
                 Section("Usage") {
                     LabeledContent("Pages", value: "\(s.pages)")

@@ -1599,6 +1599,7 @@ final class AppModel {
 
     // Diagnostics (shown in Settings)
     var lastSync = "—"
+    var lastSyncAt: Date?          // timestamp of the last successful sync, shown in Statistics
     var selfTestResult = "not run"
 
     /// End-to-end check of the op path through the app's own networking:
@@ -1654,6 +1655,7 @@ final class AppModel {
                 outbox.removeFirst(batch.count)  // drop only the acked prefix (edits during await stay)
                 persistOutbox()
                 lastSync = "\(kinds) → v\(version)"
+                lastSyncAt = Date()
                 syncFailed = false
                 isOffline = false
                 sending = false
