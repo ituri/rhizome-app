@@ -171,7 +171,11 @@ final class AppModel {
     /// text, so the line you're editing can look bigger than the rest. On = keep it (a subtle focus
     /// emphasis); off = scale the active line down to match the resting bullets. Persisted.
     var enlargeActiveLine: Bool {
-        didSet { UserDefaults.standard.set(enlargeActiveLine, forKey: "enlargeActiveLine") }
+        didSet {
+            UserDefaults.standard.set(enlargeActiveLine, forKey: "enlargeActiveLine")
+            RichEditor.editScale = enlargeActiveLine ? 1 : 0.92
+            editorReload?()   // re-render the open editor so the change shows immediately
+        }
     }
 
     /// Runtime lock state (not persisted): true while the app is waiting for biometric unlock.
@@ -224,7 +228,9 @@ final class AppModel {
         dictationLocaleID = UserDefaults.standard.string(forKey: "dictationLocaleID")
         appLock = UserDefaults.standard.object(forKey: "appLock") as? Bool ?? false
         scaleWithSystem = UserDefaults.standard.object(forKey: "scaleWithSystem") as? Bool ?? false
-        enlargeActiveLine = UserDefaults.standard.object(forKey: "enlargeActiveLine") as? Bool ?? true
+        let enlarge = UserDefaults.standard.object(forKey: "enlargeActiveLine") as? Bool ?? true
+        enlargeActiveLine = enlarge
+        RichEditor.editScale = enlarge ? 1 : 0.92
         editorTools = (UserDefaults.standard.array(forKey: "editorTools") as? [String])?.compactMap(EditorTool.init) ?? EditorTool.defaultOrder
         RichEditor.fontSize = CGFloat(fontSize)
         RichEditor.lineSpacing = CGFloat(lineSpacing)

@@ -30,6 +30,16 @@ enum RichEditor {
     // configurable from Settings (AppModel mirrors the persisted values into these)
     static var fontSize: CGFloat = 15.5
     static var lineSpacing: CGFloat = 1
+    /// Scale applied ONLY to the editor's glyphs (not the row height), so the active line can be
+    /// shrunk to match the SwiftUI display text. 1 = keep the UITextView's slightly larger look.
+    static var editScale: CGFloat = 1
+    private static var editFontSize: CGFloat { fontSize * editScale }
+
+    /// Line height at the *display* size (ignores editScale) — the row height for both editing and
+    /// resting bullets, so scaling the editor's glyphs down doesn't shrink the rows.
+    static func rowLineHeight() -> CGFloat {
+        (UIFont(name: "Inter", size: fontSize) ?? .systemFont(ofSize: fontSize)).lineHeight
+    }
     // dynamic so the editor's text follows the selected theme (light/dark) and accent
     static var ink: UIColor {
         UIColor { trait in
@@ -48,20 +58,21 @@ enum RichEditor {
     }
 
     static func font(_ fmt: String = "") -> UIFont {
+        let size = editFontSize   // editor glyphs follow editScale; row heights use rowLineHeight()
         // Italic uses the bundled Inter italic faces (Inter ships them as separate files);
         // fall back to the system italic if they're somehow unavailable. Bold/code stay Inter/Menlo.
         if fmt.contains("i") {
             let name = fmt.contains("b") ? "Inter-BoldItalic" : "Inter-Italic"
-            if let f = UIFont(name: name, size: fontSize) { return f }
+            if let f = UIFont(name: name, size: size) { return f }
             var traits: UIFontDescriptor.SymbolicTraits = .traitItalic
             if fmt.contains("b") { traits.insert(.traitBold) }
-            let base = UIFont.systemFont(ofSize: fontSize)
-            if let d = base.fontDescriptor.withSymbolicTraits(traits) { return UIFont(descriptor: d, size: fontSize) }
+            let base = UIFont.systemFont(ofSize: size)
+            if let d = base.fontDescriptor.withSymbolicTraits(traits) { return UIFont(descriptor: d, size: size) }
             return base
         }
         let name = fmt.contains("c") ? "Menlo" : "Inter"
-        var f = UIFont(name: name, size: fontSize) ?? UIFont(name: "\(name)-Regular", size: fontSize) ?? .systemFont(ofSize: fontSize)
-        if fmt.contains("b"), let d = f.fontDescriptor.withSymbolicTraits(.traitBold) { f = UIFont(descriptor: d, size: fontSize) }
+        var f = UIFont(name: name, size: size) ?? UIFont(name: "\(name)-Regular", size: size) ?? .systemFont(ofSize: size)
+        if fmt.contains("b"), let d = f.fontDescriptor.withSymbolicTraits(.traitBold) { f = UIFont(descriptor: d, size: size) }
         return f
     }
 

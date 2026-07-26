@@ -43,7 +43,7 @@ struct OutlineRow: View {
     private var isTodo: Bool { node?.format == "todo" }
     private var isNumbered: Bool { node?.format == "number" }
     private var hasFiles: Bool { !(node?.files?.isEmpty ?? true) }
-    private var rowLineH: CGFloat { RichEditor.font().lineHeight }
+    private var rowLineH: CGFloat { RichEditor.rowLineHeight() }
 
     /// Image / file attachments rendered below the bullet's text.
     @ViewBuilder
@@ -152,7 +152,7 @@ struct OutlineRow: View {
         // The bullet must stay vertically centred on the first text line at ANY font size, so it
         // shares the line's height (the text box's height) and is centred within it — a fixed
         // height drifts off-centre as the font grows/shrinks.
-        let lineH = RichEditor.font().lineHeight
+        let lineH = RichEditor.rowLineHeight()
         // .top: align the bullet with the first line of a possibly-wrapped row, and let the
         // rich editor (a UITextView) sit right next to it.
         return HStack(alignment: .top, spacing: 8) {
@@ -196,9 +196,6 @@ struct OutlineRow: View {
                     // can rename it, place the cursor, and press Return for a new line beneath it
                     RichTextEditor(model: model, id: id, source: model.editText)
                         .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)
-                        // the UITextView renders a hair larger than the SwiftUI display text; scale
-                        // the active line down to match the rest unless the user keeps the emphasis
-                        .scaleEffect(model.enlargeActiveLine ? 1 : 0.95, anchor: .leading)
                 } else if hasFiles {
                     attachments   // tap → edit (reveals the file name); long-press → full screen
                 } else {
