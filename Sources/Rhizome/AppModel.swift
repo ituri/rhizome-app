@@ -9,13 +9,14 @@ import WidgetKit
 import RhizomeKit
 
 /// What a `[[` / `((` autocomplete is currently linking to.
-enum LinkKind { case page, block }
+enum LinkKind { case page, block, tag }
 
-/// One suggestion in the `[[` (page) / `((` (block) autocomplete list.
+/// One suggestion in the `[[` (page) / `((` (block) / `#` (tag) autocomplete list.
 struct LinkSuggestion: Identifiable, Hashable {
-    let id: String       // target node id, or "__create__" for a new page
+    let id: String       // target node id, a tag string, or "__create__" for a new page
     let title: String
     let isCreate: Bool
+    var count: Int = 0    // linked-reference / usage count shown on the chip (Roam-style)
 }
 
 /// One entry in the `/` slash command menu (block types + quick actions), mirroring the
@@ -534,6 +535,11 @@ final class AppModel {
             clearSlashOnly()
             linkSuggestKind = .block
             linkSuggestions = blockSuggestions(q)
+        } else if let tag = tagTail(before) {
+            clearSlashOnly()
+            let sugg = tagSuggestions(tag)
+            if sugg.isEmpty { clearLinkSuggestions() }
+            else { linkSuggestKind = .tag; linkSuggestions = sugg }
         } else if let q = slashTail(before) {
             if !linkSuggestions.isEmpty { linkSuggestions = []; linkSuggestKind = nil }
             slashCommands = matchingSlashCommands(id, query: q)
@@ -628,10 +634,74 @@ final class AppModel {
             }
         }
         var result = Array(out.prefix(8))
+        // attach each page's linked-reference count (one pass over the doc for all of them)
+        let counts = pageReferenceCounts(Set(result.map(\.id)))
+        result = result.map { LinkSuggestion(id: $0.id, title: $0.title, isCreate: false, count: counts[$0.id] ?? 0) }
         if !q.isEmpty, !out.contains(where: { $0.title.lowercased() == q }) {
             result.append(LinkSuggestion(id: "__create__", title: query.trimmingCharacters(in: .whitespaces), isCreate: true))
         }
         return result
+    }
+
+    /// The `#`/`@` tag token being typed at the caret (incl. the sigil), or nil. Fires only when the
+    /// sigil starts a word (line start or after whitespace/`(`) with no whitespace after it.
+    private func tagTail(_ text: String) -> String? {
+        guard let idx = text.lastIndex(where: { $0 == "#" || $0 == "@" }) else { return nil }
+        if let prev = text[..<idx].last, !(prev.isWhitespace || prev == "(") { return nil }
+        let tail = text[idx...]
+        if tail.dropFirst().contains(where: { $0.isWhitespace }) { return nil }
+        return String(tail)
+    }
+
+    /// Existing tags matching the typed `#`/`@` prefix, most-used first, with their usage counts.
+    private func tagSuggestions(_ token: String) -> [LinkSuggestion] {
+        let q = token.lowercased()
+        let counts = allTagCounts()
+        return counts.keys
+            .filter { $0.lowercased().hasPrefix(q) && $0.lowercased() != q }
+            .sorted { (counts[$0] ?? 0, $1) > (counts[$1] ?? 0, $0) }
+            .prefix(8)
+            .map { LinkSuggestion(id: $0, title: $0, isCreate: false, count: counts[$0] ?? 0) }
+    }
+
+    private var tagCountCache: [String: Int]?
+    private var tagCountCacheAt = Date.distantPast
+
+    /// tag → how many times it's used across the doc (cached briefly; recomputed while typing).
+    private func allTagCounts() -> [String: Int] {
+        if let c = tagCountCache, Date().timeIntervalSince(tagCountCacheAt) < 5 { return c }
+        guard let doc else { return [:] }
+        var counts: [String: Int] = [:]
+        let re = try? NSRegularExpression(pattern: "(?:^|[\\s(])([#@][\\p{L}\\p{N}_][\\p{L}\\p{N}_\\-/]*)")
+        for node in doc.nodes.values {
+            let text = RichText.plain(node.text ?? "", doc: doc)   // strip HTML so hrefs aren't seen as tags
+            guard text.contains("#") || text.contains("@") else { continue }
+            let ns = text as NSString
+            re?.enumerateMatches(in: text, range: NSRange(location: 0, length: ns.length)) { m, _, _ in
+                guard let m, let r = Range(m.range(at: 1), in: text) else { return }
+                counts[String(text[r]), default: 0] += 1
+            }
+        }
+        tagCountCache = counts; tagCountCacheAt = Date()
+        return counts
+    }
+
+    /// For each page id, how many blocks link it (`#/n/id`) — one pass over the doc, deduped per block.
+    private func pageReferenceCounts(_ ids: Set<String>) -> [String: Int] {
+        guard let doc, !ids.isEmpty else { return [:] }
+        var counts: [String: Int] = [:]
+        let re = try? NSRegularExpression(pattern: "#/n/([A-Za-z0-9_-]+)")
+        for node in doc.nodes.values {
+            guard let text = node.text, text.contains("#/n/") else { continue }
+            let ns = text as NSString
+            var seen = Set<String>()
+            re?.enumerateMatches(in: text, range: NSRange(location: 0, length: ns.length)) { m, _, _ in
+                guard let m, let r = Range(m.range(at: 1), in: text) else { return }
+                let pid = String(text[r])
+                if ids.contains(pid), !seen.contains(pid) { seen.insert(pid); counts[pid, default: 0] += 1 }
+            }
+        }
+        return counts
     }
 
     private func blockSuggestions(_ query: String) -> [LinkSuggestion] {
@@ -667,6 +737,8 @@ final class AppModel {
             guard doc?.nodes[s.id] != nil else { return ("", "") }
             let display = RichText.plain(doc?.nodes[s.id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
             return (display.isEmpty ? "ref" : display, "((\(s.id)))")
+        case .tag:
+            return (s.title, s.title)   // a tag is plain text, e.g. "#project"
         }
     }
 

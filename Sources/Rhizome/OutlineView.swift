@@ -369,12 +369,16 @@ struct KeyboardAccessory: View {
                     HStack(spacing: 8) {
                         ForEach(model.linkSuggestions) { s in
                             Button { model.acceptLinkSuggestion(s) } label: {
-                                Label(
-                                    s.isCreate ? "Create “\(s.title)”" : s.title,
-                                    systemImage: s.isCreate ? "plus.circle"
-                                        : (model.linkSuggestKind == .block ? "text.quote" : "link")
-                                )
-                                .lineLimit(1)
+                                HStack(spacing: 5) {
+                                    Image(systemName: s.isCreate ? "plus.circle"
+                                        : model.linkSuggestKind == .block ? "text.quote"
+                                        : model.linkSuggestKind == .tag ? "number" : "link")
+                                    Text(s.isCreate ? "Create “\(s.title)”" : s.title).lineLimit(1)
+                                    // linked-reference / usage count, Roam-style (not for the "Create" chip or blocks)
+                                    if !s.isCreate, model.linkSuggestKind != .block {
+                                        Text("\(s.count)").font(.rz(11)).foregroundStyle(Color.rzInkFaint)
+                                    }
+                                }
                                 .font(.rz(15))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)

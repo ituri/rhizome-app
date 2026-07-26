@@ -439,11 +439,16 @@ struct RichTextEditor: UIViewRepresentable {
             guard let tv = textView, let kind = model.linkSuggestKind else { return }
             let ns = tv.attributedText.string as NSString
             let caret = min(tv.selectedRange.location, ns.length)
-            let open = kind == .page ? "[[" : "(("
+            let open: String
+            let raw: String
+            switch kind {
+            case .page:  open = "[["; raw = "[[\(s.title)]]"
+            case .block: open = "(("; raw = "((\(s.id)))"
+            case .tag:   open = String(s.title.prefix(1)); raw = s.title   // replace from the #/@ sigil
+            }
             let before = ns.substring(to: caret) as NSString
             let r = before.range(of: open, options: .backwards)
             guard r.location != NSNotFound else { model.clearLinkSuggestions(); return }
-            let raw = kind == .page ? "[[\(s.title)]]" : "((\(s.id)))"
             let token = NSMutableAttributedString(attributedString: RichEditor.plainRun(raw))
             token.append(NSAttributedString(string: " ", attributes: [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]))
             let m = NSMutableAttributedString(attributedString: tv.attributedText)
