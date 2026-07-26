@@ -57,6 +57,15 @@ struct OutlineRow: View {
                         onTap: { model.beginEdit(id) },
                         onLongPress: { viewer = ViewerImage(url: url) }
                     )
+                } else if f.isPDF, let url = model.fileURL(f.url) {
+                    // PDFs show inline like photos: first-page thumbnail; long-press opens QuickLook
+                    PDFThumbView(
+                        url: url,
+                        name: f.name ?? "PDF",
+                        onDelete: { model.removeFile(f.url, from: id) },
+                        onTap: { model.beginEdit(id) },
+                        onOpen: { fileViewer = ViewerFile(url: url, name: f.name ?? "file") }
+                    )
                 } else if let url = model.fileURL(f.url) {
                     // match the chip's height to the text line height so the bullet stays centred on it
                     HStack(spacing: 0) {

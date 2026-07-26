@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import QuickLook
+import PDFKit
 
 /// A tiny in-memory cache so an attachment loads once, not on every List re-render.
 @MainActor
@@ -28,6 +29,21 @@ enum FileCache {
         let dest = dir.appendingPathComponent(name.isEmpty ? "file" : name)
         do { try data.write(to: dest, options: .atomic); store[url] = dest; return dest }
         catch { return nil }
+    }
+}
+
+/// Renders a PDF's first page to a thumbnail image (once, cached) so PDFs show inline like photos.
+/// Reuses FileCache to fetch the bytes through the authenticated session.
+@MainActor
+enum PDFThumbCache {
+    private static var store: [URL: UIImage] = [:]
+    static func thumb(_ url: URL, name: String) async -> UIImage? {
+        if let img = store[url] { return img }
+        guard let local = await FileCache.download(url, name: name.isEmpty ? "file.pdf" : name),
+              let doc = PDFDocument(url: local), let page = doc.page(at: 0) else { return nil }
+        let img = page.thumbnail(of: CGSize(width: 700, height: 900), for: .cropBox)
+        store[url] = img
+        return img
     }
 }
 
@@ -139,6 +155,57 @@ struct AttachmentImageView: View {
             }
         }
         .task(id: url) { image = await ImageCache.load(url) }
+    }
+}
+
+/// A PDF attachment shown inline like a photo: its first-page thumbnail with a filename badge and a
+/// delete "×". Matches the image gestures — tap selects/edits the bullet, long-press opens the PDF
+/// full-screen in QuickLook.
+struct PDFThumbView: View {
+    let url: URL
+    let name: String
+    let onDelete: () -> Void
+    let onTap: () -> Void
+    let onOpen: () -> Void
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(image.size.width / max(image.size.height, 1), contentMode: .fit)
+                    .frame(maxHeight: 420)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(alignment: .topLeading) { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.rzLine, lineWidth: 1) }
+                    .overlay(alignment: .bottomLeading) {
+                        Label(name, systemImage: "doc.richtext")
+                            .font(.rz(12)).lineLimit(1)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(6)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onTap)
+                    .onLongPressGesture(perform: onOpen)
+                    .overlay(alignment: .topTrailing) {
+                        Button(action: onDelete) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 24))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .black.opacity(0.5))
+                        }
+                        .padding(6)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.rzLineSoft)
+                    .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
+                    .overlay { ProgressView() }
+            }
+        }
+        .task(id: url) { image = await PDFThumbCache.thumb(url, name: name) }
     }
 }
 
