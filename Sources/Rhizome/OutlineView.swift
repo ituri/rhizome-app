@@ -116,9 +116,13 @@ struct OutlineRow: View {
             let isQuote = fmt == "quote", isCode = fmt == "codeblock"
             let isHeading = fmt == "h1" || fmt == "h2" || fmt == "h3"
             ZStack(alignment: .topLeading) {
+                // Full-row tap-to-edit — but on a link-bearing row it would sit under the Text and
+                // swallow link taps (SwiftUI resolves a background .onTapGesture ahead of the Text's
+                // own link tap → openURL never fires). Disable it there; those rows edit via long-press.
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { model.beginEdit(id) }
+                    .allowsHitTesting(!hasLinks)
                 HStack(spacing: 8) {
                     if isQuote {
                         Rectangle().fill(Color.rzAccent.opacity(0.4)).frame(width: 3)
