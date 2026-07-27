@@ -10,8 +10,9 @@ import RhizomeKit
 ///
 /// Three kinds of share are handled:
 ///  • a link / selected text → one capture line (a titled `<a href>` for URLs);
-///  • a shared **image** (e.g. long-pressed on a web page) → upload the image + attach it, with the
-///    original image URL noted as a `Quelle: <link>` sub-bullet;
+///  • a shared **image** → upload the image + attach it, with the original image URL noted as a
+///    `Source: <link>` sub-bullet. Long-pressing a web image usually delivers only its URL
+///    (`public.url`, not `public.image` bytes), so an image-looking URL is downloaded and uploaded too;
 ///  • a shared **file** (e.g. a PDF open in Safari) → upload it + attach it to the capture line.
 @objc(ShareViewController)
 final class ShareViewController: SLComposeServiceViewController {
@@ -24,8 +25,9 @@ final class ShareViewController: SLComposeServiceViewController {
     }
 
     private var sharedURL: String?
+    private var sharedImageURL: String?    // an image shared by its URL only (e.g. long-pressed web image)
     private var sharedFile: SharedFile?
-    private var sharedSourceURL: String?   // an image's original web URL, for the "Quelle" sub-bullet
+    private var sharedSourceURL: String?   // an image's original web URL, for the "Source" sub-bullet
 
     override func presentationAnimationDidFinish() {
         let providers = (extensionContext?.inputItems as? [NSExtensionItem])?.flatMap { $0.attachments ?? [] } ?? []
@@ -57,7 +59,8 @@ final class ShareViewController: SLComposeServiceViewController {
 
         // 3) a shared link / text. Safari gives a clean public.url item, but many apps (e.g. Reddit)
         // share the link only as plain text, or deliver the URL as a String/Data rather than a URL
-        // object — so accept all of those.
+        // object — so accept all of those. A URL that points at an image (a long-pressed web image
+        // shared as its URL) is routed to the image path instead: download + upload + Source link.
         let types = [UTType.url.identifier, UTType.plainText.identifier, UTType.text.identifier]
         for type in types {
             guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(type) }) else { continue }
@@ -65,9 +68,13 @@ final class ShareViewController: SLComposeServiceViewController {
                 guard let url = Self.coerceURL(value) else { return }
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    self.sharedURL = url
-                    if self.contentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        self.textView.text = url
+                    if Self.isImageURL(url) {
+                        self.sharedImageURL = url
+                    } else {
+                        self.sharedURL = url
+                        if self.contentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.textView.text = url
+                        }
                     }
                     self.validateContent()   // re-enable the Post button now that we have a URL
                 }
@@ -110,6 +117,27 @@ final class ShareViewController: SLComposeServiceViewController {
         }
     }
 
+    /// True if the URL's path ends in a known image extension — a web image shared as its URL.
+    nonisolated private static func isImageURL(_ s: String) -> Bool {
+        guard let u = URL(string: s) else { return false }
+        let ext = u.pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tiff", "tif", "svg", "avif"].contains(ext)
+    }
+
+    /// Download an image's bytes from its URL, deriving a filename + mime type for the upload.
+    nonisolated private static func download(imageURL s: String) async throws -> SharedFile {
+        guard let u = URL(string: s) else { throw URLError(.badURL) }
+        let (data, response) = try await URLSession.shared.data(from: u)
+        guard !data.isEmpty else { throw URLError(.zeroByteResource) }
+        let mime = response.mimeType ?? "image/jpeg"
+        var name = u.lastPathComponent
+        if name.isEmpty || !name.contains(".") {
+            let ext = UTType(mimeType: mime)?.preferredFilenameExtension ?? "jpg"
+            name = "image." + ext
+        }
+        return SharedFile(data: data, name: name, mime: mime, isImage: true)
+    }
+
     /// Best-effort: find a URL among the shared items and remember it as an image's source link.
     private func loadSourceURL(from providers: [NSItemProvider]) {
         guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.url.identifier) }) else { return }
@@ -145,23 +173,34 @@ final class ShareViewController: SLComposeServiceViewController {
         // needs the main app to have signed in (its session is mirrored to the App Group)
         guard AppGroup.serverURL != nil, AppGroup.sessionCookie != nil else { return false }
         let hasText = !contentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return hasText || sharedURL != nil || sharedFile != nil
+        return hasText || sharedURL != nil || sharedImageURL != nil || sharedFile != nil
     }
 
     override func didSelectPost() {
         let comment = contentText.trimmingCharacters(in: .whitespacesAndNewlines)
         let context = extensionContext
 
-        // shared image / file → upload the bytes, then capture a line carrying the attachment
-        if let file = sharedFile {
-            let source = sharedSourceURL
+        // shared image / file → upload the bytes, then capture a line carrying the attachment.
+        // A web image shared only as its URL is downloaded first; its URL doubles as the source link.
+        if sharedFile != nil || sharedImageURL != nil {
+            let existing = sharedFile
+            let imageURL = sharedImageURL
+            let source = sharedSourceURL ?? sharedImageURL
             Task {
                 do {
+                    let file: SharedFile
+                    if let existing {
+                        file = existing
+                    } else if let imageURL {
+                        file = try await Self.download(imageURL: imageURL)
+                    } else {
+                        throw URLError(.unknown)
+                    }
                     let uploaded = try await Capture.upload(file.data, name: file.name, contentType: file.mime)
                     var children: [String] = []
                     if file.isImage, let source, let u = URL(string: source) {
                         let title = u.host ?? source
-                        children.append("Quelle: \(LinkFormat.anchor(url: u.absoluteString, title: title))")
+                        children.append("Source: \(LinkFormat.anchor(url: u.absoluteString, title: title))")
                     }
                     try await Capture.sendFiles([uploaded], caption: comment, children: children)
                     context?.completeRequest(returningItems: [], completionHandler: nil)
