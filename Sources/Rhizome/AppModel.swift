@@ -1349,6 +1349,15 @@ final class AppModel {
         return insert(parent: parent, ord: doc?.nodes[parent]?.children?.count ?? 0)
     }
 
+    /// Guarantee a page has at least one bullet to type into. A page created via a link (or a
+    /// fresh page) starts with zero children, which renders as an empty outline with nothing to
+    /// tap. Mirrors the journal's starter-bullet behaviour (see `ensureDay`).
+    @discardableResult
+    func ensureFirstBullet(of pageID: String) -> String? {
+        guard let node = doc?.nodes[pageID], node.children?.isEmpty ?? true else { return nil }
+        return insertChild(of: pageID)
+    }
+
     private func insert(parent: String, ord: Int) -> String {
         let id = clock.newID()
         doc?.nodes[id] = RNode(text: "", children: [])

@@ -177,6 +177,10 @@ struct PageView: View {
                             .listRowBackground(Color.rzPaper)
                     }
                     .outlineList()
+                    // A page created via a link (or a fresh page) starts with zero bullets, so the
+                    // outline renders empty with nothing to tap. Auto-create a starter bullet on
+                    // open so the page is immediately writable (mirrors the journal's day bullets).
+                    .task(id: pageID) { model.ensureFirstBullet(of: pageID) }
                     // center the line being edited on screen so the keyboard never covers it —
                     // once the keyboard has settled (and the spacer above has opened up the room)
                     .onChange(of: model.editingID) { _, new in
