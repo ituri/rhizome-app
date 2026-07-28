@@ -189,7 +189,7 @@ struct AttachmentImageView: View {
     let url: URL
     let onDelete: () -> Void
     let onTap: () -> Void          // select/edit the bullet (reveals its file-name text)
-    let onLongPress: () -> Void    // open full-screen
+    let onOpen: () -> Void         // open full-screen (zoomable)
     @State private var image: UIImage?
     @State private var failed = false
 
@@ -206,8 +206,8 @@ struct AttachmentImageView: View {
                     .frame(maxHeight: 420)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .contentShape(Rectangle())
-                    .onTapGesture(perform: onTap)
-                    .onLongPressGesture(perform: onLongPress)
+                    .onTapGesture(perform: onTap)                 // tap the picture → edit the bullet
+                    .onLongPressGesture(perform: onOpen)         // long-press → full-screen (also below)
                     .overlay(alignment: .topTrailing) {
                         Button(action: onDelete) {
                             Image(systemName: "xmark.circle.fill")
@@ -216,6 +216,18 @@ struct AttachmentImageView: View {
                                 .foregroundStyle(.white, .black.opacity(0.5))
                         }
                         .padding(6)
+                    }
+                    // an explicit, discoverable way to view/zoom without editing — a plain tap on the
+                    // picture jumps into the line, this corner button opens the zoomable viewer
+                    .overlay(alignment: .bottomTrailing) {
+                        Button(action: onOpen) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right.circle.fill")
+                                .font(.system(size: 24))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .black.opacity(0.5))
+                        }
+                        .padding(6)
+                        .accessibilityLabel("View full screen")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -261,8 +273,8 @@ struct PDFThumbView: View {
                             .padding(6)
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture(perform: onTap)
-                    .onLongPressGesture(perform: onOpen)
+                    .onTapGesture(perform: onTap)                 // tap → edit the bullet
+                    .onLongPressGesture(perform: onOpen)         // long-press → open (also the button below)
                     .overlay(alignment: .topTrailing) {
                         Button(action: onDelete) {
                             Image(systemName: "xmark.circle.fill")
@@ -271,6 +283,17 @@ struct PDFThumbView: View {
                                 .foregroundStyle(.white, .black.opacity(0.5))
                         }
                         .padding(6)
+                    }
+                    // explicit "open" button so viewing doesn't require a long-press / editing the line
+                    .overlay(alignment: .bottomTrailing) {
+                        Button(action: onOpen) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right.circle.fill")
+                                .font(.system(size: 24))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .black.opacity(0.5))
+                        }
+                        .padding(6)
+                        .accessibilityLabel("Open full screen")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {

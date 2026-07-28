@@ -55,7 +55,7 @@ struct OutlineRow: View {
                         url: url,
                         onDelete: { model.removeFile(f.url, from: id) },
                         onTap: { model.beginEdit(id) },
-                        onLongPress: { viewer = ViewerImage(url: url) }
+                        onOpen: { viewer = ViewerImage(url: url) }
                     )
                 } else if f.isPDF, let url = model.fileURL(f.url) {
                     // PDFs show inline like photos: first-page thumbnail; long-press opens QuickLook
