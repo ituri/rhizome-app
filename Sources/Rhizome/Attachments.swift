@@ -183,6 +183,23 @@ struct ViewerImage: Identifiable {
     let url: URL
 }
 
+/// A translucent circular corner control overlaid on an attachment thumbnail, with a generous 44pt
+/// hit target. It's a Button (not a tap gesture) so it cleanly consumes its tap instead of firing
+/// alongside the picture's own edit tap.
+@MainActor @ViewBuilder
+private func cornerButton(_ systemName: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Image(systemName: systemName)
+            .font(.system(size: 24))
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(.white, .black.opacity(0.5))
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(label)
+}
+
 /// An image attachment on a bullet: a fixed-aspect thumbnail (stable size regardless of the List's
 /// measurement pass), a delete "×" in its corner, and a tap that opens it full-screen.
 struct AttachmentImageView: View {
@@ -200,36 +217,23 @@ struct AttachmentImageView: View {
                 // row is re-measured); no max width → it fills the available column width. The delete
                 // "×" overlay is applied to the IMAGE (before the width-filling frame) so it hugs the
                 // picture's corner instead of floating in the trailing space of a wider frame.
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(image.size.width / max(image.size.height, 1), contentMode: .fit)
-                    .frame(maxHeight: 420)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: onTap)                 // tap the picture → edit the bullet
-                    .onLongPressGesture(perform: onOpen)         // long-press → full-screen (also below)
-                    .overlay(alignment: .topTrailing) {
-                        Button(action: onDelete) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .black.opacity(0.5))
-                        }
-                        .padding(6)
-                    }
-                    // an explicit, discoverable way to view/zoom without editing — a plain tap on the
-                    // picture jumps into the line, this corner button opens the zoomable viewer
-                    .overlay(alignment: .bottomTrailing) {
-                        Button(action: onOpen) {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right.circle.fill")
-                                .font(.system(size: 24))
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .black.opacity(0.5))
-                        }
-                        .padding(6)
-                        .accessibilityLabel("View full screen")
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // The picture is a Button (tap → edit the bullet) rather than a bare `.onTapGesture`,
+                // so the overlaid corner Buttons cleanly consume their own taps — a background tap
+                // gesture would fire SIMULTANEOUSLY with a Button on top, which is why the expand
+                // button used to also drop into edit mode.
+                Button(action: onTap) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(image.size.width / max(image.size.height, 1), contentMode: .fit)
+                        .frame(maxHeight: 420)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .overlay(alignment: .topTrailing) { cornerButton("xmark.circle.fill", "Delete image", onDelete) }
+                // explicit, discoverable view/zoom that doesn't edit the line
+                .overlay(alignment: .bottomTrailing) { cornerButton("arrow.up.left.and.arrow.down.right.circle.fill", "View full screen", onOpen) }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.rzLineSoft)
@@ -259,43 +263,27 @@ struct PDFThumbView: View {
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(image.size.width / max(image.size.height, 1), contentMode: .fit)
-                    .frame(maxHeight: 420)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(alignment: .topLeading) { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.rzLine, lineWidth: 1) }
-                    .overlay(alignment: .bottomLeading) {
-                        Label(name, systemImage: "doc.richtext")
-                            .font(.rz(12)).lineLimit(1)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .padding(6)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: onTap)                 // tap → edit the bullet
-                    .onLongPressGesture(perform: onOpen)         // long-press → open (also the button below)
-                    .overlay(alignment: .topTrailing) {
-                        Button(action: onDelete) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .black.opacity(0.5))
+                Button(action: onTap) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(image.size.width / max(image.size.height, 1), contentMode: .fit)
+                        .frame(maxHeight: 420)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(alignment: .topLeading) { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.rzLine, lineWidth: 1) }
+                        .overlay(alignment: .bottomLeading) {
+                            Label(name, systemImage: "doc.richtext")
+                                .font(.rz(12)).lineLimit(1)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .padding(6)
                         }
-                        .padding(6)
-                    }
-                    // explicit "open" button so viewing doesn't require a long-press / editing the line
-                    .overlay(alignment: .bottomTrailing) {
-                        Button(action: onOpen) {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right.circle.fill")
-                                .font(.system(size: 24))
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .black.opacity(0.5))
-                        }
-                        .padding(6)
-                        .accessibilityLabel("Open full screen")
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .overlay(alignment: .topTrailing) { cornerButton("xmark.circle.fill", "Delete PDF", onDelete) }
+                // explicit "open" button so viewing doesn't require a long-press / editing the line
+                .overlay(alignment: .bottomTrailing) { cornerButton("arrow.up.left.and.arrow.down.right.circle.fill", "Open full screen", onOpen) }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.rzLineSoft)
