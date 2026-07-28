@@ -224,11 +224,14 @@ struct AssetThumb: View {
     let url: URL
     let onTap: () -> Void
     @State private var image: UIImage?
+    @State private var failed = false
 
     var body: some View {
         Group {
             if let image {
                 Image(uiImage: image).resizable().scaledToFill()
+            } else if failed {
+                Color.rzLineSoft.overlay { Image(systemName: "photo").foregroundStyle(Color.rzInkFaint) }
             } else {
                 Color.rzLineSoft.overlay { ProgressView() }
             }
@@ -237,7 +240,10 @@ struct AssetThumb: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
-        .task(id: url) { image = await ImageCache.load(url) }
+        .task(id: url) {
+            failed = false
+            if let img = await ImageCache.load(url, maxPixel: 240) { image = img } else { failed = true }
+        }
     }
 }
 
@@ -370,6 +376,7 @@ struct AssetPickRow: View {
     @Environment(AppModel.self) private var model
     let asset: RAsset
     @State private var image: UIImage?
+    @State private var failed = false
 
     private var cleanName: String {
         (asset.name ?? asset.url).replacingOccurrences(of: #"^[a-z0-9]{6,}-"#, with: "", options: .regularExpression)
@@ -379,8 +386,8 @@ struct AssetPickRow: View {
         HStack(spacing: 12) {
             Group {
                 if let image { Image(uiImage: image).resizable().scaledToFill() }
-                else if asset.isImage { Color.rzLineSoft.overlay { ProgressView() } }
-                else { Color.rzLineSoft.overlay { Image(systemName: "paperclip").foregroundStyle(Color.rzInkFaint) } }
+                else if asset.isImage && !failed { Color.rzLineSoft.overlay { ProgressView() } }
+                else { Color.rzLineSoft.overlay { Image(systemName: asset.isImage ? "photo" : "paperclip").foregroundStyle(Color.rzInkFaint) } }
             }
             .frame(width: 44, height: 44)
             .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -394,7 +401,10 @@ struct AssetPickRow: View {
             Spacer()
         }
         .task(id: asset.url) {
-            if asset.isImage, let url = model.fileURL(asset.url) { image = await ImageCache.load(url) }
+            failed = false
+            if asset.isImage, let url = model.fileURL(asset.url) {
+                if let img = await ImageCache.load(url, maxPixel: 240) { image = img } else { failed = true }
+            }
         }
     }
 }

@@ -2,16 +2,82 @@ import SwiftUI
 import UIKit
 import QuickLook
 import PDFKit
+import ImageIO
+import CryptoKit
 
-/// A tiny in-memory cache so an attachment loads once, not on every List re-render.
+/// Two-tier image cache: an in-memory `NSCache` (auto-evicting under pressure) plus an on-disk
+/// thumbnail cache in `Caches/`, so downsampled thumbnails survive app relaunches and aren't
+/// re-fetched or re-decoded every time. Thumbnails (`maxPixel != nil`) are downsampled with ImageIO
+/// — we never decode a multi-MB photo at full resolution just to fill a 56pt cell. Full-resolution
+/// loads (`maxPixel == nil`, e.g. the zoomable viewer) stay memory-only.
 @MainActor
 enum ImageCache {
-    private static var store: [URL: UIImage] = [:]
-    static func load(_ url: URL) async -> UIImage? {
-        if let img = store[url] { return img }
-        guard let (data, _) = try? await URLSession.shared.data(from: url), let img = UIImage(data: data) else { return nil }
-        store[url] = img
+    private static let mem: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.countLimit = 400
+        c.totalCostLimit = 80 * 1024 * 1024   // ~80 MB of decoded pixels
+        return c
+    }()
+    nonisolated private static let diskDir: URL = {
+        let d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("rz-thumbs", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }()
+
+    static func load(_ url: URL, maxPixel: Int? = nil) async -> UIImage? {
+        let mp = maxPixel ?? 0
+        let key = "\(mp)|\(url.absoluteString)" as NSString
+        if let img = mem.object(forKey: key) { return img }
+        // download + downsample + disk I/O all happen off the main thread; only the (now small)
+        // final decode + NSCache insert run here on the main actor
+        guard let bytes = await fetchBytes(url, mp), let img = UIImage(data: bytes) else { return nil }
+        mem.setObject(img, forKey: key, cost: img.cgImage.map { $0.bytesPerRow * $0.height } ?? 1)
         return img
+    }
+
+    /// Returns the bytes to decode: a disk-cached thumbnail if present, else the (downsampled, for
+    /// thumbnails) network bytes — which are also written to the disk cache. Sendable `Data` crosses
+    /// back to the main actor; the heavy work never touches it.
+    nonisolated private static func fetchBytes(_ url: URL, _ maxPixel: Int) async -> Data? {
+        let disk = diskURL(url, maxPixel)
+        if maxPixel > 0, let data = try? Data(contentsOf: disk) { return data }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 25
+        guard let (data, resp) = try? await URLSession.shared.data(for: req) else { return nil }
+        if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
+        guard maxPixel > 0 else { return data }                 // full-res: no downsample, no disk
+        let thumb = downsample(data, maxPixel: maxPixel) ?? data
+        try? thumb.write(to: disk, options: .atomic)
+        return thumb
+    }
+
+    /// ImageIO downsample → a small JPEG. Reads the source lazily and only materialises the thumbnail,
+    /// so a huge photo never gets fully decoded into memory.
+    nonisolated private static func downsample(_ data: Data, maxPixel: Int) -> Data? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg).jpegData(compressionQuality: 0.8)
+    }
+
+    nonisolated private static func diskURL(_ url: URL, _ maxPixel: Int) -> URL {
+        let digest = SHA256.hash(data: Data("\(maxPixel)|\(url.absoluteString)".utf8))
+        return diskDir.appendingPathComponent(digest.map { String(format: "%02x", $0) }.joined()).appendingPathExtension("jpg")
+    }
+
+    /// Fetch a previously stored / freshly stored thumbnail image by an arbitrary key (used by
+    /// PDFThumbCache so rendered first-page thumbnails also survive relaunches).
+    nonisolated static func diskImageData(key: String) -> Data? { try? Data(contentsOf: keyedDiskURL(key)) }
+    nonisolated static func storeDiskImage(_ data: Data, key: String) { try? data.write(to: keyedDiskURL(key), options: .atomic) }
+    nonisolated private static func keyedDiskURL(_ key: String) -> URL {
+        let digest = SHA256.hash(data: Data(key.utf8))
+        return diskDir.appendingPathComponent(digest.map { String(format: "%02x", $0) }.joined()).appendingPathExtension("jpg")
     }
 }
 
@@ -39,10 +105,14 @@ enum PDFThumbCache {
     private static var store: [URL: UIImage] = [:]
     static func thumb(_ url: URL, name: String) async -> UIImage? {
         if let img = store[url] { return img }
+        let key = "pdf|\(url.absoluteString)"
+        // disk cache first → no need to re-download the PDF and re-render on every launch
+        if let data = ImageCache.diskImageData(key: key), let img = UIImage(data: data) { store[url] = img; return img }
         guard let local = await FileCache.download(url, name: name.isEmpty ? "file.pdf" : name),
               let doc = PDFDocument(url: local), let page = doc.page(at: 0) else { return nil }
         let img = page.thumbnail(of: CGSize(width: 700, height: 900), for: .cropBox)
         store[url] = img
+        if let jpeg = img.jpegData(compressionQuality: 0.8) { ImageCache.storeDiskImage(jpeg, key: key) }
         return img
     }
 }
@@ -121,6 +191,7 @@ struct AttachmentImageView: View {
     let onTap: () -> Void          // select/edit the bullet (reveals its file-name text)
     let onLongPress: () -> Void    // open full-screen
     @State private var image: UIImage?
+    @State private var failed = false
 
     var body: some View {
         Group {
@@ -151,10 +222,14 @@ struct AttachmentImageView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.rzLineSoft)
                     .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
-                    .overlay { ProgressView() }
+                    .overlay { failed ? AnyView(Image(systemName: "photo").foregroundStyle(Color.rzInkFaint)) : AnyView(ProgressView()) }
+                    .onTapGesture(perform: onTap)
             }
         }
-        .task(id: url) { image = await ImageCache.load(url) }
+        .task(id: url) {
+            failed = false
+            if let img = await ImageCache.load(url, maxPixel: 1600) { image = img } else { failed = true }
+        }
     }
 }
 
