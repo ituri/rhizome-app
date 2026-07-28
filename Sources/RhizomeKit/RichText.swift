@@ -158,7 +158,15 @@ public enum RichText {
                 if let pid = pageID(named: name, doc: doc) { s.link = URL(string: "rhizome://n/\(pid)") }
                 append(name, s, accent: true, &out)
             } else {
-                append(token, style, accent: true, &out)   // #tag
+                // #tag or #[[Multi word]] → tapping navigates to the page with that name
+                // (create-on-tap, like the web's openTag). Keep the visible text as the raw token.
+                var name = String(token.dropFirst())            // drop the leading '#'
+                if name.hasPrefix("[[") && name.hasSuffix("]]") { name = String(name.dropFirst(2).dropLast(2)) }
+                var s = style
+                if let enc = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
+                    s.link = URL(string: "rhizome://tag/\(enc)")
+                }
+                append(token, s, accent: true, &out)   // #tag
             }
             last = m.range.location + m.range.length
         }
@@ -234,6 +242,14 @@ public enum RichText {
         guard url.scheme == "rhizome", url.host == "n" else { return nil }
         let id = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
         return id.isEmpty ? nil : id
+    }
+
+    /// The tag/page name from an internal `rhizome://tag/<name>` link (percent-decoded), else nil.
+    public static func tagName(from url: URL) -> String? {
+        guard url.scheme == "rhizome", url.host == "tag" else { return nil }
+        let raw = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
+        let name = raw.removingPercentEncoding ?? raw
+        return name.isEmpty ? nil : name
     }
 
     // MARK: helpers

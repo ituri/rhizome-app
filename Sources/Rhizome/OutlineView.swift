@@ -109,6 +109,7 @@ struct OutlineRow: View {
         } else {
             let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
                 || raw.contains("http://") || raw.contains("https://") || raw.contains("www.")   // bare URLs are tappable too
+                || raw.range(of: #"#[\p{L}0-9]"#, options: .regularExpression) != nil            // a #tag is a tappable link too
             let size: Double = fmt == "h1" ? model.fontSize * 1.55
                 : fmt == "h2" ? model.fontSize * 1.3
                 : fmt == "h3" ? model.fontSize * 1.12

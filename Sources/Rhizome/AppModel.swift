@@ -871,6 +871,17 @@ final class AppModel {
         return createPage(title: title, geo: geo)
     }
 
+    /// Tapping a #tag/@mention → navigate to the page with that title, creating it if none exists
+    /// (mirrors the web's openTag → getOrCreatePage → zoomTo). Uses a case-insensitive title match
+    /// and, unlike findOrCreatePage, never touches a page's geo flag.
+    @discardableResult
+    func openTag(_ name: String) -> String? {
+        let title = name.trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { return nil }
+        if let existing = RichText.pageID(named: title, doc: doc) { return existing }
+        return createPage(title: title)
+    }
+
     /// Geo button: fetch the current position and append it as a `[[coords]]` page link to the
     /// bullet you started from (find-or-create the coordinates page). Appending — rather than a
     /// caret splice — means it works whether or not the editor kept focus during the fetch.

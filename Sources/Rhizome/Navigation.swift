@@ -37,6 +37,10 @@ extension View {
                 path.wrappedValue.append(id)   // go to the linked node itself
                 return .handled
             }
+            if let name = RichText.tagName(from: url), let id = model.openTag(name) {
+                path.wrappedValue.append(id)   // #tag → its page (created on the fly if needed)
+                return .handled
+            }
             return .systemAction
         })
     }
