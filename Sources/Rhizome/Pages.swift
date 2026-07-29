@@ -145,11 +145,30 @@ struct PageView: View {
 
     private var pageTitle: String { RichText.plain(model.doc?.nodes[pageID]?.text ?? "Page", doc: model.doc) }
 
+    /// The Roam skin's in-page title (web `.zoom-title`: Inter 500 at 2.57× the body size), which the
+    /// Paper skin leaves to the nav bar. Tapping it renames the page, like the nav-bar title does.
+    @ViewBuilder private var roamTitleRow: some View {
+        Button {
+            renameDraft = pageTitle
+            showRename = true
+        } label: {
+            Text(pageTitle)
+                .font(.rzTitle(model.fontSize))
+                .foregroundStyle(Color.rzInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: model.skin.titleGap, trailing: 14))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.rzPaper)
+    }
+
     var body: some View {
         Group {
             if let doc = model.doc, doc.nodes[pageID] != nil {
                 ScrollViewReader { proxy in
                     List {
+                        if model.skin == .roam { roamTitleRow }   // Roam titles the page body itself
                         if let c = model.pageCoords(pageID) {   // a location page → map under the title
                             GeoMapView(lat: c.lat, lon: c.lon)
                                 .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
@@ -159,9 +178,7 @@ struct PageView: View {
                         Section {
                             ForEach(visibleRows(doc, from: pageID)) { row in
                                 OutlineRow(id: row.id, node: doc.nodes[row.id])
-                                    .listRowInsets(EdgeInsets(
-                                        top: 5, leading: CGFloat(row.depth) * 18 + 14, bottom: 5, trailing: 14
-                                    ))
+                                    .listRowInsets(rzRowInsets(depth: row.depth, skin: model.skin))
                                     .listRowSeparator(.hidden)
                                     .listRowBackground(Color.rzPaper)
                                     .id(row.id)

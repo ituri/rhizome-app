@@ -8,17 +8,46 @@ import SwiftUI
 /// and `((block references))` — into a styled `AttributedString`.
 public enum RichText {
     #if canImport(SwiftUI)
-    /// The accent for tags/links in displayed text — follows the selected accent, and (on UIKit)
-    /// the light/dark theme, so it re-resolves when the colour scheme flips.
-    public static var accent: Color {
+    /// The accent for tags in displayed text — follows the selected accent, and (on UIKit) the
+    /// light/dark theme, so it re-resolves when the colour scheme flips. Both skins use it: the web's
+    /// Roam CSS keeps `a.tag { color: var(--accent) }`.
+    public static var accent: Color { tone(RZTheme.accent.light, RZTheme.accent.dark) }
+
+    /// An internal `[[page]]` link — the one place the Roam skin overrides the accent, with
+    /// Blueprint blue (web `a[href^="#/n/"]`).
+    static var link: Color {
+        RZTheme.skin == .roam ? tone(RZTheme.roamBlue.light, RZTheme.roamBlue.dark) : accent
+    }
+
+    /// The tag pill's fill — web `--accent-soft`, the accent at 12% (light) / 16% (dark).
+    static var tagFill: Color {
         let a = RZTheme.accent
         #if canImport(UIKit)
         return Color(uiColor: UIColor { trait in
-            let c = trait.userInterfaceStyle == .dark ? a.dark : a.light
+            let isDark = trait.userInterfaceStyle == .dark
+            let c = isDark ? a.dark : a.light
+            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: isDark ? 0.16 : 0.12)
+        })
+        #else
+        return Color(red: a.light.0, green: a.light.1, blue: a.light.2).opacity(0.12)
+        #endif
+    }
+
+    /// The faint `[[` `]]` the Roam skin draws around an internal link (web `::before`/`::after`).
+    static var bracket: Color { tone(RZTheme.roamBracket.light, RZTheme.roamBracket.dark) }
+
+    /// Body ink — used for the Roam skin's block references, which read as plain underlined text.
+    static var ink: Color { tone(RZTheme.ink.light, RZTheme.ink.dark) }
+
+    /// A colour that re-resolves for the active light/dark scheme (on UIKit).
+    private static func tone(_ light: (Double, Double, Double), _ dark: (Double, Double, Double)) -> Color {
+        #if canImport(UIKit)
+        return Color(uiColor: UIColor { trait in
+            let c = trait.userInterfaceStyle == .dark ? dark : light
             return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
         })
         #else
-        return Color(red: a.light.0, green: a.light.1, blue: a.light.2)
+        return Color(red: light.0, green: light.1, blue: light.2)
         #endif
     }
     #endif
@@ -120,6 +149,34 @@ public enum RichText {
     )
 
     private static func appendStyled(_ text: String, _ style: Style, _ out: inout AttributedString, _ doc: RDoc?) {
+        // An `<a href="#/n/…">` link (a resolved [[page]]) gets Roam's faint brackets around it;
+        // block refs and #tags don't (web: `a.tag::before/::after { content: none }`).
+        guard RZTheme.skin == .roam, isNodeLink(style.link) else {
+            return appendTokens(text, style, &out, doc)
+        }
+        appendBrackets("[[", style, &out)
+        appendTokens(text, style, &out, doc)
+        appendBrackets("]]", style, &out)
+    }
+
+    /// Whether a link points into the graph (`rhizome://n/<id>`) — the web's `a[href^="#/n/"]`.
+    private static func isNodeLink(_ url: URL?) -> Bool {
+        url?.scheme == "rhizome" && url?.host == "n"
+    }
+
+    /// The `[[` / `]]` around an internal link — faint grey, and part of the link so tapping the
+    /// brackets navigates too.
+    private static func appendBrackets(_ text: String, _ style: Style, _ out: inout AttributedString) {
+        var piece = AttributedString(text)
+        #if canImport(SwiftUI)
+        piece.foregroundColor = bracket
+        if let url = style.link { piece.link = url; piece.underlineStyle = nil }
+        if renderSize > 0 { piece.font = .rzFace(renderSize) }
+        #endif
+        out.append(piece)
+    }
+
+    private static func appendTokens(_ text: String, _ style: Style, _ out: inout AttributedString, _ doc: RDoc?) {
         guard let re = tokenRE else { return append(text, style, accent: false, &out) }
         let ns = text as NSString
         var last = 0
@@ -150,13 +207,15 @@ public enum RichText {
                 let target = doc?.nodes[id]?.text ?? ""
                 var s = style
                 s.link = URL(string: "rhizome://n/\(id)")   // tapping a block ref jumps to its bullet
-                append(plainStrip(target), s, accent: true, &out)
+                append(plainStrip(target), s, accent: true, &out, blockRef: true)
             } else if token.hasPrefix("[[") {
                 // a raw [[Name]] (unresolved wiki link) → link to the page with that title, if one exists
                 let name = String(token.dropFirst(2).dropLast(2))
                 var s = style
                 if let pid = pageID(named: name, doc: doc) { s.link = URL(string: "rhizome://n/\(pid)") }
+                if RZTheme.skin == .roam { appendBrackets("[[", s, &out) }
                 append(name, s, accent: true, &out)
+                if RZTheme.skin == .roam { appendBrackets("]]", s, &out) }
             } else {
                 // #tag or #[[Multi word]] → tapping navigates to the page with that name
                 // (create-on-tap, like the web's openTag). Keep the visible text as the raw token.
@@ -166,7 +225,7 @@ public enum RichText {
                 if let enc = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
                     s.link = URL(string: "rhizome://tag/\(enc)")
                 }
-                append(token, s, accent: true, &out)   // #tag
+                append(token, s, accent: true, &out, pill: true)   // #tag
             }
             last = m.range.location + m.range.length
         }
@@ -175,20 +234,24 @@ public enum RichText {
         }
     }
 
-    private static func append(_ string: String, _ style: Style, accent isAccent: Bool, _ out: inout AttributedString) {
+    private static func append(
+        _ string: String, _ style: Style, accent isAccent: Bool, _ out: inout AttributedString,
+        pill: Bool = false, blockRef: Bool = false
+    ) {
         guard !string.isEmpty else { return }
-        var piece = AttributedString(string)
+        // The Roam skin renders a #tag as the web's pill: accent-soft background, 0.92em, with the
+        // CSS's 0.4em side padding faked by a narrow no-break space inside the tinted run.
+        let pilled = pill && RZTheme.skin == .roam
+        var piece = AttributedString(pilled ? "\u{202F}\(string)\u{202F}" : string)
         let styled = style.bold || style.italic || style.code
         #if canImport(SwiftUI)
         if styled, renderSize > 0 {
-            // give styled runs an explicit font so italic actually slants (Inter has no italic face)
+            // give styled runs an explicit font so italic actually slants (the upright faces carry
+            // no italic), in whichever typeface is selected
             if style.code {
                 piece.font = .system(size: renderSize, design: .monospaced)
-            } else if style.italic {
-                // bundled Inter italic faces (registered by Fonts.register)
-                piece.font = .custom(style.bold ? "Inter-BoldItalic" : "Inter-Italic", fixedSize: renderSize)
-            } else if style.bold {
-                piece.font = .custom("Inter", fixedSize: renderSize).weight(.bold)
+            } else {
+                piece.font = .rzFace(renderSize, weight: style.bold ? .bold : .regular, italic: style.italic)
             }
         } else if styled {
             var intent: InlinePresentationIntent = []
@@ -212,10 +275,21 @@ public enum RichText {
         if let tc = style.textColor {
             piece.foregroundColor = tc.color               // explicit text colour wins
         } else if isAccent || style.link != nil {
-            piece.foregroundColor = accent
+            // a link into the graph takes the skin's link colour (Roam's blue); tags, web links and
+            // the rest stay on the accent
+            piece.foregroundColor = isNodeLink(style.link) ? link : accent
         }
         if let url = style.link { piece.link = url; piece.underlineStyle = nil }
+        // Roam draws a ((block reference)) as ordinary underlined text, not a coloured link
+        if blockRef, RZTheme.skin == .roam, style.textColor == nil {
+            piece.foregroundColor = ink
+            piece.underlineStyle = .single
+        }
         if let h = style.highlight { piece.backgroundColor = h.color }
+        if pilled {
+            piece.backgroundColor = tagFill               // web --accent-soft
+            if !styled, renderSize > 0 { piece.font = .rzFace(renderSize * 0.92) }
+        }
         #endif
         out.append(piece)
     }

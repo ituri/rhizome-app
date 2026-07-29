@@ -153,7 +153,7 @@ struct OutlineRow: View {
     }
 
     var body: some View {
-        _ = model.accent   // re-render this row live when the accent changes
+        _ = (model.accent, model.skin, model.fontFamily)   // re-render live when the design changes
         // The bullet must stay vertically centred on the first text line at ANY font size, so it
         // shares the line's height (the text box's height) and is centred within it — a fixed
         // height drifts off-centre as the font grows/shrinks.
@@ -185,10 +185,20 @@ struct OutlineRow: View {
                 Button {
                     if hasChildren { model.toggleCollapse(id) }
                 } label: {
-                    Image(systemName: hasChildren ? (isCollapsed ? "chevron.right" : "chevron.down") : "circle.fill")
-                        .font(.system(size: hasChildren ? 11 : 5, weight: .semibold))
-                        .foregroundStyle(Color.rzInkFaint)
-                        .frame(width: 14, height: lineH, alignment: .center)
+                    Group {
+                        if hasChildren {
+                            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.rzInkFaint)
+                        } else {
+                            // drawn as a shape, not a `circle.fill` glyph — the glyph renders well
+                            // under its point size, so the CSS diameter (`.bullet .dot`) wouldn't hold
+                            Circle()
+                                .fill(Color.rzDot)
+                                .frame(width: model.skin.dotSize, height: model.skin.dotSize)
+                        }
+                    }
+                    .frame(width: 14, height: lineH, alignment: .center)
                 }
                 .buttonStyle(.plain)
                 .disabled(!hasChildren)

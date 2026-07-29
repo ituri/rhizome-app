@@ -166,6 +166,14 @@ struct AppearanceSettingsView: View {
                 Picker("Theme", selection: $model.theme) {
                     ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
                 }
+                Picker("Skin", selection: $model.skin) {
+                    ForEach(RZSkin.allCases) { Text($0.label).tag($0) }
+                }
+                Picker("Font", selection: $model.fontFamily) {
+                    ForEach(RZFontChoice.allCases) { f in
+                        Text(f.label).font(.rzFace(15, choice: f)).tag(f)   // each row in its own face
+                    }
+                }
                 Picker("Accent", selection: $model.accent) {
                     ForEach(AccentChoice.allCases) { a in
                         HStack {
@@ -177,19 +185,29 @@ struct AppearanceSettingsView: View {
                 Stepper(value: $model.fontSize, in: 12...28, step: 0.5) {
                     LabeledContent("Font size", value: String(format: "%.1f pt", model.fontSize))
                 }
-                Stepper(value: $model.lineSpacing, in: 0...14, step: 1) {
-                    LabeledContent("Line spacing", value: String(format: "%.0f pt", model.lineSpacing))
+                Stepper(value: $model.lineSpacing, in: 0...14, step: 0.5) {
+                    LabeledContent("Line spacing", value: String(format: "%.1f pt", model.lineSpacing))
                 }
                 Toggle("Scale with system text size", isOn: $model.scaleWithSystem)
                 Toggle("Enlarge the line you're editing", isOn: $model.enlargeActiveLine)
-                // live preview of size, spacing and accent (tag + link tones)
-                Text(RichText.attributed("The quick #brown fox jumps over the lazy dog.", doc: nil))
+                // Live preview of size, spacing, typeface and skin (title, link brackets, tag pill).
+                // The page link is written as a resolved `<a href="#/n/…">` so it previews in the
+                // skin's real link colour — a bare [[name]] has no target here and would stay on the
+                // accent. Not hit-testable: it's a sample, not something to navigate to.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("July 29th, 2026").font(.rzTitle(model.fontSize)).lineLimit(1).minimumScaleFactor(0.5)
+                    Text(RichText.attributed(
+                        ##"The quick #brown fox jumps over the <a href="#/n/preview">lazy dog</a>."##,
+                        doc: nil, size: model.fontSize
+                    ))
                     .font(model.scaleWithSystem ? .rz(model.fontSize) : .rzFixed(model.fontSize))
                     .lineSpacing(model.lineSpacing)
-                    .foregroundStyle(Color.rzInk)
+                }
+                .foregroundStyle(Color.rzInk)
+                .allowsHitTesting(false)
                 Button("Reset to defaults", role: .destructive) { model.resetDesign() }
             } footer: {
-                Text("With scaling off, text stays a fixed size so the line you're editing matches the rest.")
+                Text("Skin matches the web app's look: Paper is the app's own, Roam is the web's Roam styling — 14 pt at a 1.5 line height, big Inter 500 titles, blue [[bracketed]] links, tag pills, lighter bullets and a wider indent. The warm paper and your accent stay either way. Picking a skin applies its type scale; size and spacing stay adjustable. With scaling off, text stays a fixed size so the line you're editing matches the rest.")
             }
         }
         .paperBackground()

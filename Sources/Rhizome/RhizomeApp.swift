@@ -11,7 +11,7 @@ struct RhizomeApp: App {
         WindowGroup {
             ContentView()
                 .environment(model)
-                .tint(rzAccentColor(model.accent))
+                .tint(Color.rzAccent)   // the chosen accent — both skins keep it (web `--accent`)
                 .preferredColorScheme(model.theme.colorScheme)
                 .task { await model.bootstrap() }
                 .onOpenURL { model.handleURL($0) }   // widget → rhizome://capture

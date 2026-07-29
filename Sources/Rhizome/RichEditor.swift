@@ -37,18 +37,26 @@ enum RichEditor {
 
     /// Line height at the *display* size (ignores editScale) — the row height for both editing and
     /// resting bullets, so scaling the editor's glyphs down doesn't shrink the rows.
-    static func rowLineHeight() -> CGFloat {
-        (UIFont(name: "Inter", size: fontSize) ?? .systemFont(ofSize: fontSize)).lineHeight
-    }
-    // dynamic so the editor's text follows the selected theme (light/dark) and accent
+    static func rowLineHeight() -> CGFloat { uiFont(size: fontSize).lineHeight }
+    // dynamic so the editor's text follows the selected theme (light/dark), skin and accent
     static var ink: UIColor {
-        UIColor { trait in
-            let c: (Double, Double, Double) = trait.userInterfaceStyle == .dark
-                ? (0.8975, 0.8815, 0.849) : (0.1847, 0.14, 0.1105)
+        let (light, dark) = RZTheme.ink   // Paper's warm ink, or Roam's Blueprint #182026
+        return UIColor { trait in
+            let c = trait.userInterfaceStyle == .dark ? dark : light
             return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
         }
     }
+    /// Tags and the caret — the chosen accent in both skins (web `caret-color: var(--accent)`,
+    /// `a.tag { color: var(--accent) }`).
     static var accent: UIColor { rzAccentUIColor(RZTheme.accent) }
+    /// `[[page]]` link runs — Blueprint blue under the Roam skin, the accent otherwise.
+    static var link: UIColor {
+        guard RZTheme.skin == .roam else { return accent }
+        return UIColor { trait in
+            let c = trait.userInterfaceStyle == .dark ? RZTheme.roamBlue.dark : RZTheme.roamBlue.light
+            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        }
+    }
 
     /// The paragraph style carrying the configured line spacing, applied across the whole editor.
     static func paragraphStyle() -> NSParagraphStyle {
@@ -57,23 +65,42 @@ enum RichEditor {
         return p
     }
 
-    static func font(_ fmt: String = "") -> UIFont {
-        let size = editFontSize   // editor glyphs follow editScale; row heights use rowLineHeight()
-        // Italic uses the bundled Inter italic faces (Inter ships them as separate files);
-        // fall back to the system italic if they're somehow unavailable. Bold/code stay Inter/Menlo.
+    /// editor glyphs follow editScale; row heights use rowLineHeight() at the display size
+    static func font(_ fmt: String = "") -> UIFont { uiFont(size: editFontSize, fmt) }
+
+    /// The selected typeface as a UIFont. Italic uses the bundled italic face (Inter and Newsreader
+    /// ship them as separate files); the system italic stands in if it's somehow unavailable.
+    /// A code run is always monospaced.
+    static func uiFont(size rawSize: CGFloat, _ fmt: String = "") -> UIFont {
+        let choice = RZTheme.font
+        let size = rawSize * choice.sizeFactor
+        if fmt.contains("c") {
+            let f = UIFont(name: "Menlo", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+            guard fmt.contains("b"), let d = f.fontDescriptor.withSymbolicTraits(.traitBold) else { return f }
+            return UIFont(descriptor: d, size: size)
+        }
         if fmt.contains("i") {
-            let name = fmt.contains("b") ? "Inter-BoldItalic" : "Inter-Italic"
-            if let f = UIFont(name: name, size: size) { return f }
+            let name = fmt.contains("b") ? choice.boldItalicName : choice.italicName
+            if let name, var f = UIFont(name: name, size: size) {
+                // Newsreader's italic is variable — its bold comes off the weight axis
+                if fmt.contains("b"), name == choice.italicName,
+                   let d = f.fontDescriptor.withSymbolicTraits(.traitBold) { f = UIFont(descriptor: d, size: size) }
+                return f
+            }
             var traits: UIFontDescriptor.SymbolicTraits = .traitItalic
             if fmt.contains("b") { traits.insert(.traitBold) }
-            let base = UIFont.systemFont(ofSize: size)
+            let base = systemBase(size: size, choice)
             if let d = base.fontDescriptor.withSymbolicTraits(traits) { return UIFont(descriptor: d, size: size) }
             return base
         }
-        let name = fmt.contains("c") ? "Menlo" : "Inter"
-        var f = UIFont(name: name, size: size) ?? UIFont(name: "\(name)-Regular", size: size) ?? .systemFont(ofSize: size)
+        var f = choice.regularName.flatMap { UIFont(name: $0, size: size) ?? UIFont(name: "\($0)-Regular", size: size) }
+            ?? systemBase(size: size, choice)
         if fmt.contains("b"), let d = f.fontDescriptor.withSymbolicTraits(.traitBold) { f = UIFont(descriptor: d, size: size) }
         return f
+    }
+
+    private static func systemBase(size: CGFloat, _ choice: RZFontChoice) -> UIFont {
+        choice == .mono ? .monospacedSystemFont(ofSize: size, weight: .regular) : .systemFont(ofSize: size)
     }
 
     // ((id)) | #[[multi word]] | #tag | [[wiki link]]  — same shapes RichText recognises.
@@ -176,7 +203,7 @@ enum RichEditor {
     }
 
     static func tokenAttributes() -> [NSAttributedString.Key: Any] {
-        [.font: font(), .foregroundColor: accent, .underlineStyle: NSUnderlineStyle.single.rawValue]
+        [.font: font(), .foregroundColor: link, .underlineStyle: NSUnderlineStyle.single.rawValue]
     }
 
     /// A plain, editable run (accent-free) — used for inserting raw link syntax like `[[Name]]`.
@@ -569,7 +596,7 @@ struct RichTextEditor: UIViewRepresentable {
                 }
                 for (range, isLink) in edits {
                     m.removeAttribute(.rzColor, range: range)
-                    m.addAttribute(.foregroundColor, value: isLink ? RichEditor.accent : RichEditor.ink, range: range)
+                    m.addAttribute(.foregroundColor, value: isLink ? RichEditor.link : RichEditor.ink, range: range)
                 }
             }
             tv.attributedText = m

@@ -121,6 +121,41 @@ final class AppModel {
         didSet { UserDefaults.standard.set(accent.rawValue, forKey: "accent"); RZTheme.accent = accent }
     }
 
+    /// Visual skin: Paper (warm) or Roam (cool BlueprintJS). Swaps the whole palette *and* the type
+    /// scale; works with any theme (Light/Auto/Dark). Mirrors the web app's Roam custom-CSS theme.
+    var skin: RZSkin {
+        didSet {
+            UserDefaults.standard.set(skin.rawValue, forKey: "skin")
+            RZTheme.skin = skin
+            if skin != oldValue { applyTypeScale() }   // 14/1.5 for Roam, 15.5/1.55 for Paper
+            editorReload?()
+        }
+    }
+
+    /// Typeface: Inter (the web's sans), Newsreader (its serif), the system font or a monospace —
+    /// mirrors the web app's `[data-font]` options.
+    var fontFamily: RZFontChoice {
+        didSet {
+            UserDefaults.standard.set(fontFamily.rawValue, forKey: "fontFamily")
+            RZTheme.font = fontFamily
+            if fontFamily != oldValue { lineSpacing = spacing(for: fontSize) }   // keep the line-height ratio
+            editorReload?()
+        }
+    }
+
+    /// Adopt the skin's type scale — the web CSS's font-size and line-height for that skin.
+    private func applyTypeScale() {
+        fontSize = skin.bodySize
+        lineSpacing = spacing(for: skin.bodySize)
+    }
+
+    /// Extra leading (pt) that turns the typeface's natural line height into the web's
+    /// `line-height` ratio for the active skin — SwiftUI/TextKit `lineSpacing` is additive.
+    private func spacing(for size: Double) -> Double {
+        let natural = Double(RichEditor.uiFont(size: CGFloat(size)).lineHeight)
+        return (max(0, size * skin.lineHeight - natural) * 2).rounded() / 2
+    }
+
     /// Downscale uploaded images to this percent of their original dimensions (100 = full size).
     var imageScalePercent: Double {
         didSet { UserDefaults.standard.set(imageScalePercent, forKey: "imageScalePercent") }
@@ -202,13 +237,18 @@ final class AppModel {
     static let defaultLineSpacing = 1.0
     static let defaultTheme = AppTheme.auto
     static let defaultAccent = AccentChoice.clay
+    static let defaultSkin = RZSkin.paper
+    static let defaultFont = RZFontChoice.inter
 
-    /// Restore the design settings (text size, spacing, theme, accent) to their defaults.
+    /// Restore the design settings (text size, spacing, theme, accent, skin, typeface) to their
+    /// defaults. Skin last: it re-applies its own type scale when it changes.
     func resetDesign() {
-        fontSize = Self.defaultFontSize
-        lineSpacing = Self.defaultLineSpacing
         theme = Self.defaultTheme
         accent = Self.defaultAccent
+        fontFamily = Self.defaultFont
+        skin = Self.defaultSkin
+        fontSize = Self.defaultFontSize
+        lineSpacing = Self.defaultLineSpacing
     }
 
     init() {
@@ -222,6 +262,8 @@ final class AppModel {
         lineSpacing = UserDefaults.standard.object(forKey: "lineSpacing") as? Double ?? Self.defaultLineSpacing
         theme = UserDefaults.standard.string(forKey: "theme").flatMap(AppTheme.init) ?? Self.defaultTheme
         accent = UserDefaults.standard.string(forKey: "accent").flatMap(AccentChoice.init) ?? Self.defaultAccent
+        skin = UserDefaults.standard.string(forKey: "skin").flatMap(RZSkin.init) ?? Self.defaultSkin
+        fontFamily = UserDefaults.standard.string(forKey: "fontFamily").flatMap(RZFontChoice.init) ?? Self.defaultFont
         imageScalePercent = UserDefaults.standard.object(forKey: "imageScalePercent") as? Double ?? 100
         haptics = UserDefaults.standard.object(forKey: "haptics") as? Bool ?? true
         geoResolveAddress = UserDefaults.standard.object(forKey: "geoResolveAddress") as? Bool ?? true
@@ -235,6 +277,8 @@ final class AppModel {
         RichEditor.fontSize = CGFloat(fontSize)
         RichEditor.lineSpacing = CGFloat(lineSpacing)
         RZTheme.accent = accent
+        RZTheme.skin = skin
+        RZTheme.font = fontFamily
         Haptics.enabled = haptics
         locked = appLock   // require an unlock on cold launch when the lock is on
     }

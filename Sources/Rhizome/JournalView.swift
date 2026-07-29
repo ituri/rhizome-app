@@ -32,9 +32,7 @@ struct JournalView: View {
                                 Section {
                                     ForEach(visibleRows(doc, from: day.id)) { row in
                                         OutlineRow(id: row.id, node: doc.nodes[row.id])
-                                            .listRowInsets(EdgeInsets(
-                                                top: 5, leading: CGFloat(row.depth) * 18 + 14, bottom: 5, trailing: 14
-                                            ))
+                                            .listRowInsets(rzRowInsets(depth: row.depth, skin: model.skin))
                                             .listRowSeparator(.hidden)
                                             .listRowBackground(Color.rzPaper)
                                     }
@@ -43,11 +41,11 @@ struct JournalView: View {
                                     // tapping the date opens the full-page view of that day
                                     NavigationLink(value: day.id) {
                                         Text(day.title)
-                                            .font(.rz(27, .bold))
+                                            .font(.rzTitle(model.fontSize))   // web .day-title
                                             .foregroundStyle(Color.rzInk)
                                             .textCase(nil)
-                                            .padding(.top, 8)
-                                            .padding(.bottom, 2)
+                                            .padding(.top, model.skin.sectionGap)
+                                            .padding(.bottom, model.skin.titleGap)
                                     }
                                     .buttonStyle(.plain)
                                 }

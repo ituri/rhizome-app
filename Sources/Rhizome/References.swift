@@ -17,14 +17,16 @@ struct ReferenceRow: View {
 
     var body: some View {
         NavigationLink(value: model.parentOf(id) ?? id) {
-            Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc))
-                .font(.rz(15))
+            Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc, size: model.fontSize))
+                .font(.rz(model.fontSize))
+                .lineSpacing(model.lineSpacing)
                 .foregroundStyle(Color.rzInk)
                 .lineLimit(4)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 10)
-                .background(Color.rzTint, in: RoundedRectangle(cornerRadius: 4))
+                // web .ref-row: 6px/10px padding, 3px radius under the Roam skin
+                .background(Color.rzTint, in: RoundedRectangle(cornerRadius: model.skin == .roam ? 3 : 4))
         }
         .buttonStyle(.plain)
         .listRowBackground(Color.rzPaper)
