@@ -171,16 +171,33 @@ final class PillTextView: UITextView {
         textLayoutManager?.ensureLayout(for: textLayoutManager!.documentRange)
         let whole = NSRange(location: 0, length: ns.length)
         ns.enumerateAttribute(.rzPill, in: whole) { value, range, _ in
-            guard value != nil else { return }
-            // one rect per line the run touches; the outset scales with the tag's font so the
-            // pill keeps its proportions at any text size (≈0.25em sideways, ≈0.14em vertically)
-            let f = ns.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont
-            let em = f?.pointSize ?? RichEditor.fontSize
-            pills += segmentRects(range).map { $0.insetBy(dx: -em * 0.25, dy: -max(1.5, em * 0.14)) }
+            guard value != nil,
+                  let f = ns.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont
+            else { return }
+            let em = f.pointSize
+            let padV = max(1.5, em * 0.14)
+            // One rect per line the run touches. Horizontally the segment frame is right
+            // (≈0.25em outset); vertically it spans the whole line box INCLUDING the additive
+            // lineSpacing below it, which made the pill hang low. Anchor the pill to the
+            // baseline and size it from the tag font's own metrics instead, so the glyphs sit
+            // centred; keep the frame as a sanity bound in case baseline semantics ever shift.
+            pills += segments(range).map { seg in
+                var r = seg.frame.insetBy(dx: -em * 0.25, dy: 0)
+                let baseline = seg.frame.minY + seg.baseline
+                let top = baseline - f.ascender - padV
+                let bottom = baseline - f.descender + padV   // descender is negative
+                if top > seg.frame.minY - padV - 2, bottom < seg.frame.maxY + padV + 2, bottom > top {
+                    r.origin.y = top
+                    r.size.height = bottom - top
+                } else {
+                    r = r.insetBy(dx: 0, dy: -padV)          // fallback: outset the line box
+                }
+                return r
+            }
         }
         ns.enumerateAttribute(.link, in: whole) { value, range, _ in
             guard let url = value as? URL ?? (value as? String).flatMap(URL.init) else { return }
-            linkRects += segmentRects(range).map { ($0.insetBy(dx: -3, dy: -3), url) }
+            linkRects += segments(range).map { ($0.frame.insetBy(dx: -3, dy: -3), url) }
         }
         let path = UIBezierPath()
         for r in pills { path.append(UIBezierPath(roundedRect: r, cornerRadius: min(7, r.height / 2))) }
@@ -192,19 +209,20 @@ final class PillTextView: UITextView {
         pillLayer.fillColor = RichDisplay.pillFill.resolvedColor(with: traitCollection).cgColor
     }
 
-    /// The on-screen rects of a character range (one per line fragment). Inset and padding are
-    /// zero, so text-container coordinates are view coordinates.
-    private func segmentRects(_ range: NSRange) -> [CGRect] {
+    /// The on-screen rects of a character range (one per line fragment) with the baseline offset
+    /// from the rect's top. Inset and padding are zero, so text-container coordinates are view
+    /// coordinates.
+    private func segments(_ range: NSRange) -> [(frame: CGRect, baseline: CGFloat)] {
         guard let tlm = textLayoutManager, let tcm = tlm.textContentManager,
               let start = tcm.location(tcm.documentRange.location, offsetBy: range.location),
               let end = tcm.location(start, offsetBy: range.length),
               let tr = NSTextRange(location: start, end: end) else { return [] }
-        var rects: [CGRect] = []
-        tlm.enumerateTextSegments(in: tr, type: .standard, options: []) { _, frame, _, _ in
-            if frame.width > 0.5 { rects.append(frame) }
+        var out: [(CGRect, CGFloat)] = []
+        tlm.enumerateTextSegments(in: tr, type: .standard, options: []) { _, frame, baseline, _ in
+            if frame.width > 0.5 { out.append((frame, baseline)) }
             return true
         }
-        return rects
+        return out
     }
 }
 
