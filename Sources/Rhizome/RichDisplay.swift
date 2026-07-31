@@ -172,15 +172,18 @@ final class PillTextView: UITextView {
         let whole = NSRange(location: 0, length: ns.length)
         ns.enumerateAttribute(.rzPill, in: whole) { value, range, _ in
             guard value != nil else { return }
-            // one rect per line the run touches; slight outset for the web's 0.06em breathing room
-            pills += segmentRects(range).map { $0.insetBy(dx: -1.5, dy: -0.5) }
+            // one rect per line the run touches; the outset scales with the tag's font so the
+            // pill keeps its proportions at any text size (≈0.25em sideways, ≈0.14em vertically)
+            let f = ns.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont
+            let em = f?.pointSize ?? RichEditor.fontSize
+            pills += segmentRects(range).map { $0.insetBy(dx: -em * 0.25, dy: -max(1.5, em * 0.14)) }
         }
         ns.enumerateAttribute(.link, in: whole) { value, range, _ in
             guard let url = value as? URL ?? (value as? String).flatMap(URL.init) else { return }
             linkRects += segmentRects(range).map { ($0.insetBy(dx: -3, dy: -3), url) }
         }
         let path = UIBezierPath()
-        for r in pills { path.append(UIBezierPath(roundedRect: r, cornerRadius: 6)) }   // web 6px
+        for r in pills { path.append(UIBezierPath(roundedRect: r, cornerRadius: min(7, r.height / 2))) }
         pillLayer.path = path.isEmpty ? nil : path.cgPath
         refillPills()
     }
