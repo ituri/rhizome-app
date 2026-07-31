@@ -107,9 +107,6 @@ struct OutlineRow: View {
                 .contentShape(Rectangle())
                 .onTapGesture { model.beginEdit(id) }
         } else {
-            let hasLinks = raw.contains("[[") || raw.contains("((") || raw.contains("href")
-                || raw.contains("http://") || raw.contains("https://") || raw.contains("www.")   // bare URLs are tappable too
-                || raw.range(of: #"#[\p{L}0-9]"#, options: .regularExpression) != nil            // a #tag is a tappable link too
             let size: Double = fmt == "h1" ? model.fontSize * 1.55
                 : fmt == "h2" ? model.fontSize * 1.3
                 : fmt == "h3" ? model.fontSize * 1.12
@@ -117,44 +114,27 @@ struct OutlineRow: View {
             let isQuote = fmt == "quote", isCode = fmt == "codeblock"
             let isHeading = fmt == "h1" || fmt == "h2" || fmt == "h3"
             ZStack(alignment: .topLeading) {
-                // Full-row edit layer. On a link-bearing row its TAP gesture must be off — it sits
-                // under the Text, and SwiftUI arbitrates a background .onTapGesture ahead of the
-                // Text's own link tap, so links would die (the 563983d bug). But the layer must STAY
-                // hit-testable: the ZStack's long-press only fires when the touch lands on a
-                // hit-testable descendant, and on the empty part of the row this layer is the only
-                // one — allowsHitTesting(false) here made address/geotag bullets uneditable.
+                // Full-row tap-to-edit. The display view above is only touchable over link glyphs
+                // (PillTextView.point(inside:)), so a tap on a link navigates and every other tap
+                // lands here and edits — no SwiftUI gesture arbitration involved. That UIKit-side
+                // split ends the tap-layer whack-a-mole (2f1e1ea → ea64c6c → 563983d → 018b65c).
                 Color.clear
                     .contentShape(Rectangle())
-                    .gesture(TapGesture().onEnded { model.beginEdit(id) },
-                             including: hasLinks ? .subviews : .all)
+                    .onTapGesture { model.beginEdit(id) }
                 HStack(spacing: 8) {
                     if isQuote {
                         Rectangle().fill(Color.rzAccent.opacity(0.4)).frame(width: 3)
                             .allowsHitTesting(false)
                     }
-                    Text(RichText.attributed(raw, doc: model.doc, size: size))
-                        // fixed size (matching the editor) unless the user opts into Dynamic Type
-                        .font(isCode ? .system(size: model.fontSize, design: .monospaced)
-                              : (model.scaleWithSystem ? .rz(size) : .rzFixed(size)))
-                        // nil (not .regular) so inline bold/italic in the text still renders
-                        .fontWeight(isHeading ? .bold : nil)
-                        .lineSpacing(model.lineSpacing)
-                        .strikethrough(isDone)
-                        .foregroundStyle(isDone ? Color.rzDone : (isQuote ? Color.rzInkSoft : Color.rzInk))
-                        .allowsHitTesting(hasLinks)
-                        .frame(maxWidth: hasLinks ? nil : .infinity, alignment: .leading)
-                        .padding(isCode ? 6 : 0)
-                        .background(isCode ? Color.rzInkFaint.opacity(0.1) : Color.clear,
-                                    in: RoundedRectangle(cornerRadius: 6))
-                    // Tap-to-edit beside the text on a link row — a fully-linked bullet (address,
-                    // shared URL) has no other tappable spot. Sits NEXT to the Text, not under it,
-                    // so it can't win a link tap the way the full-row layer did.
-                    if hasLinks {
-                        Color.clear
-                            .frame(maxWidth: .infinity, minHeight: lineH)
-                            .contentShape(Rectangle())
-                            .onTapGesture { model.beginEdit(id) }
-                    }
+                    RichTextDisplay(
+                        raw: raw, doc: model.doc, size: size,
+                        baseColor: isDone ? RichDisplay.done : (isQuote ? RichDisplay.inkSoft : RichEditor.ink),
+                        baseBold: isHeading, baseCode: isCode, strikeAll: isDone,
+                        scaled: model.scaleWithSystem
+                    )
+                    .padding(isCode ? 6 : 0)
+                    .background(isCode ? Color.rzInkFaint.opacity(0.1) : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 6))
                 }
             }
             .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)   // stay tappable when empty

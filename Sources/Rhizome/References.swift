@@ -17,11 +17,12 @@ struct ReferenceRow: View {
 
     var body: some View {
         NavigationLink(value: model.parentOf(id) ?? id) {
-            Text(RichText.attributed(model.doc?.nodes[id]?.text ?? "", doc: model.doc, size: model.fontSize))
-                .font(.rz(model.fontSize))
-                .lineSpacing(model.lineSpacing)
-                .foregroundStyle(Color.rzInk)
-                .lineLimit(4)
+            // non-interactive: the whole row is a NavigationLink to the ref's bullet, so the
+            // display view must not intercept link taps here (unlike outline rows)
+            RichTextDisplay(
+                raw: model.doc?.nodes[id]?.text ?? "", doc: model.doc, size: model.fontSize,
+                baseColor: RichEditor.ink, scaled: false, maxLines: 4, interactive: false
+            )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 10)

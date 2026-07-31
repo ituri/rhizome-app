@@ -3,9 +3,29 @@ import Foundation
 import SwiftUI
 #endif
 
-/// Renders a Rhizome node's stored text — an HTML fragment (`<a href>` links,
+/// One styled run of a parsed node text — the unit both renderers consume. The SwiftUI renderer
+/// (`RichText.attributed`) turns pieces into an `AttributedString`; the app's UIKit renderer
+/// (RichDisplay) turns the same pieces into an `NSAttributedString` with custom drawing keys.
+public struct RichPiece: Sendable {
+    public var text = ""
+    /// Tag/link/wiki-name tinting (an unresolved `[[Name]]` is accented even without a link).
+    public var accent = false
+    /// A `#tag` — the Roam skin renders it as a pill.
+    public var pill = false
+    /// A `((block reference))` — the Roam skin renders it as plain underlined text.
+    public var blockRef = false
+    /// A synthetic faint `[[` / `]]` the Roam skin draws around an internal link. Not part of the
+    /// semantic text — `RichText.plain` skips these.
+    public var bracket = false
+    public var bold = false, italic = false, strike = false, code = false, underline = false
+    public var link: URL?
+    public var highlight: Highlight?
+    public var textColor: TextColor?
+}
+
+/// Parses a Rhizome node's stored text — an HTML fragment (`<a href>` links,
 /// `<s>` strikethrough, occasionally `<b>/<i>/<code>`) mixed with plain `#tags`
-/// and `((block references))` — into a styled `AttributedString`.
+/// and `((block references))` — into `RichPiece` runs, and renders them.
 public enum RichText {
     #if canImport(SwiftUI)
     /// The accent for tags in displayed text — follows the selected accent, and (on UIKit) the
@@ -52,9 +72,15 @@ public enum RichText {
     }
     #endif
 
-    /// Markup stripped to plain text (for titles etc.).
+    /// Markup stripped to plain text (for titles etc.). Semantic text only: the Roam skin's
+    /// synthetic `[[` `]]` brackets and pill padding never appear here.
     public static func plain(_ raw: String, doc: RDoc? = nil) -> String {
-        String(attributed(raw, doc: doc).characters)
+        pieces(raw, doc: doc).lazy.filter { !$0.bracket }.map(\.text).joined()
+    }
+
+    /// Whether a link points into the graph (`rhizome://n/<id>`) — the web's `a[href^="#/n/"]`.
+    public static func isNodeLink(_ url: URL?) -> Bool {
+        url?.scheme == "rhizome" && url?.host == "n"
     }
 
     private struct Style {
@@ -71,19 +97,17 @@ public enum RichText {
     private static func hlFrom(tag: String) -> Highlight? { classAttr(tag).flatMap(Highlight.inClass) }
     private static func tcFrom(tag: String) -> TextColor? { classAttr(tag).flatMap(TextColor.inClass) }
 
-    // The base point size for the current render, so bold/italic/code runs can be given an
-    // explicit font (Inter ships without an italic face, so the inline-intent italic doesn't
-    // slant — we substitute a real italic). 0 = fall back to inline presentation intents.
-    nonisolated(unsafe) private static var renderSize: CGFloat = 0
+    // MARK: parsing → pieces
 
-    public static func attributed(_ raw: String, doc: RDoc? = nil, size: CGFloat = 0) -> AttributedString {
-        renderSize = size
-        var out = AttributedString()
+    /// Parse `raw` into styled pieces. Skin-dependent *structure* (the Roam brackets around an
+    /// internal link) is decided here; colours, fonts and pill chrome are the renderers' job.
+    public static func pieces(_ raw: String, doc: RDoc? = nil) -> [RichPiece] {
+        var out: [RichPiece] = []
         var stack = [Style()]
         let chars = Array(raw)
         var i = 0
 
-        func emit(_ text: String) { appendStyled(decodeEntities(text), stack.last!, &out, doc) }
+        func emit(_ text: String) { emitStyled(decodeEntities(text), stack.last!, &out, doc) }
 
         while i < chars.count {
             if chars[i] == "<", let close = nextIndex(of: ">", in: chars, from: i) {
@@ -100,6 +124,102 @@ public enum RichText {
             }
         }
         return out
+    }
+
+    private static func emitStyled(_ text: String, _ style: Style, _ out: inout [RichPiece], _ doc: RDoc?) {
+        // An `<a href="#/n/…">` link (a resolved [[page]]) gets Roam's faint brackets around it;
+        // block refs and #tags don't (web: `a.tag::before/::after { content: none }`).
+        guard RZTheme.skin == .roam, isNodeLink(style.link) else {
+            return emitTokens(text, style, &out, doc)
+        }
+        emitBracket("[[", style, &out)
+        emitTokens(text, style, &out, doc)
+        emitBracket("]]", style, &out)
+    }
+
+    /// A `[[` / `]]` around an internal link — carries the link so tapping the brackets navigates.
+    private static func emitBracket(_ text: String, _ style: Style, _ out: inout [RichPiece]) {
+        var p = RichPiece(text: text)
+        p.bracket = true
+        p.link = style.link
+        out.append(p)
+    }
+
+    private static let tokenRE = try? NSRegularExpression(
+        pattern: #"(https?://[^\s<>()]+)|(\bwww\.[^\s<>()]+)|(\(\([A-Za-z0-9_-]+\)\))|(#\[\[[^\]]+\]\])|(#[\p{L}0-9_\-]+)|(\[\[[^\]]+\]\])"#
+    )
+
+    private static func emitTokens(_ text: String, _ style: Style, _ out: inout [RichPiece], _ doc: RDoc?) {
+        guard let re = tokenRE else { return emitPiece(text, style, accent: false, &out) }
+        let ns = text as NSString
+        var last = 0
+        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            if m.range.location > last {
+                emitPiece(ns.substring(with: NSRange(location: last, length: m.range.location - last)), style, accent: false, &out)
+            }
+            let token = ns.substring(with: m.range)
+            if token.hasPrefix("http://") || token.hasPrefix("https://") || token.hasPrefix("www.") {
+                if style.link != nil {
+                    emitPiece(token, style, accent: false, &out)   // already inside an explicit <a href>
+                } else {
+                    // don't swallow trailing sentence punctuation into the URL
+                    var url = token, trailing = ""
+                    while let last = url.last, ".,;:!?".contains(last) { trailing = String(last) + trailing; url = String(url.dropLast()) }
+                    let target = url.hasPrefix("www.") ? "https://\(url)" : url   // bare www. → https
+                    if let u = URL(string: target) {
+                        var s = style
+                        s.link = u
+                        emitPiece(url, s, accent: true, &out)
+                    } else {
+                        emitPiece(url, style, accent: false, &out)
+                    }
+                    if !trailing.isEmpty { emitPiece(trailing, style, accent: false, &out) }
+                }
+            } else if token.hasPrefix("((") {
+                let id = String(token.dropFirst(2).dropLast(2))
+                let target = doc?.nodes[id]?.text ?? ""
+                var s = style
+                s.link = URL(string: "rhizome://n/\(id)")   // tapping a block ref jumps to its bullet
+                emitPiece(plainStrip(target), s, accent: true, &out, blockRef: true)
+            } else if token.hasPrefix("[[") {
+                // a raw [[Name]] (unresolved wiki link) → link to the page with that title, if one exists
+                let name = String(token.dropFirst(2).dropLast(2))
+                var s = style
+                if let pid = pageID(named: name, doc: doc) { s.link = URL(string: "rhizome://n/\(pid)") }
+                if RZTheme.skin == .roam { emitBracket("[[", s, &out) }
+                emitPiece(name, s, accent: true, &out)
+                if RZTheme.skin == .roam { emitBracket("]]", s, &out) }
+            } else {
+                // #tag or #[[Multi word]] → tapping navigates to the page with that name
+                // (create-on-tap, like the web's openTag). Keep the visible text as the raw token.
+                var name = String(token.dropFirst())            // drop the leading '#'
+                if name.hasPrefix("[[") && name.hasSuffix("]]") { name = String(name.dropFirst(2).dropLast(2)) }
+                var s = style
+                if let enc = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
+                    s.link = URL(string: "rhizome://tag/\(enc)")
+                }
+                emitPiece(token, s, accent: true, &out, pill: true)   // #tag
+            }
+            last = m.range.location + m.range.length
+        }
+        if last < ns.length {
+            emitPiece(ns.substring(from: last), style, accent: false, &out)
+        }
+    }
+
+    private static func emitPiece(
+        _ string: String, _ style: Style, accent isAccent: Bool, _ out: inout [RichPiece],
+        pill: Bool = false, blockRef: Bool = false
+    ) {
+        guard !string.isEmpty else { return }
+        var p = RichPiece(text: string)
+        p.accent = isAccent
+        p.pill = pill
+        p.blockRef = blockRef
+        p.bold = style.bold; p.italic = style.italic; p.strike = style.strike
+        p.code = style.code; p.underline = style.underline
+        p.link = style.link; p.highlight = style.highlight; p.textColor = style.textColor
+        out.append(p)
     }
 
     // MARK: tag handling
@@ -142,156 +262,82 @@ public enum RichText {
         return String(match[q]).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
     }
 
-    // MARK: styled text emission ( #tags / [[links]] / ((refs)) inside a text run )
+    // MARK: SwiftUI rendering
 
-    private static let tokenRE = try? NSRegularExpression(
-        pattern: #"(https?://[^\s<>()]+)|(\bwww\.[^\s<>()]+)|(\(\([A-Za-z0-9_-]+\)\))|(#\[\[[^\]]+\]\])|(#[\p{L}0-9_\-]+)|(\[\[[^\]]+\]\])"#
-    )
-
-    private static func appendStyled(_ text: String, _ style: Style, _ out: inout AttributedString, _ doc: RDoc?) {
-        // An `<a href="#/n/…">` link (a resolved [[page]]) gets Roam's faint brackets around it;
-        // block refs and #tags don't (web: `a.tag::before/::after { content: none }`).
-        guard RZTheme.skin == .roam, isNodeLink(style.link) else {
-            return appendTokens(text, style, &out, doc)
+    /// The pieces rendered as a SwiftUI `AttributedString`. `size` 0 = no explicit fonts (inline
+    /// presentation intents only) — used where the surrounding view sets the font.
+    public static func attributed(_ raw: String, doc: RDoc? = nil, size: CGFloat = 0) -> AttributedString {
+        var out = AttributedString()
+        for p in pieces(raw, doc: doc) {
+            out.append(p.bracket ? renderBracket(p, size: size) : render(p, size: size))
         }
-        appendBrackets("[[", style, &out)
-        appendTokens(text, style, &out, doc)
-        appendBrackets("]]", style, &out)
+        return out
     }
 
-    /// Whether a link points into the graph (`rhizome://n/<id>`) — the web's `a[href^="#/n/"]`.
-    private static func isNodeLink(_ url: URL?) -> Bool {
-        url?.scheme == "rhizome" && url?.host == "n"
-    }
-
-    /// The `[[` / `]]` around an internal link — faint grey, and part of the link so tapping the
-    /// brackets navigates too.
-    private static func appendBrackets(_ text: String, _ style: Style, _ out: inout AttributedString) {
-        var piece = AttributedString(text)
+    private static func renderBracket(_ p: RichPiece, size: CGFloat) -> AttributedString {
+        var piece = AttributedString(p.text)
         #if canImport(SwiftUI)
         piece.foregroundColor = bracket
-        if let url = style.link { piece.link = url; piece.underlineStyle = nil }
-        if renderSize > 0 { piece.font = .rzFace(renderSize) }
+        if let url = p.link { piece.link = url; piece.underlineStyle = nil }
+        if size > 0 { piece.font = .rzFace(size) }
         #endif
-        out.append(piece)
+        return piece
     }
 
-    private static func appendTokens(_ text: String, _ style: Style, _ out: inout AttributedString, _ doc: RDoc?) {
-        guard let re = tokenRE else { return append(text, style, accent: false, &out) }
-        let ns = text as NSString
-        var last = 0
-        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-            if m.range.location > last {
-                append(ns.substring(with: NSRange(location: last, length: m.range.location - last)), style, accent: false, &out)
-            }
-            let token = ns.substring(with: m.range)
-            if token.hasPrefix("http://") || token.hasPrefix("https://") || token.hasPrefix("www.") {
-                if style.link != nil {
-                    append(token, style, accent: false, &out)   // already inside an explicit <a href>
-                } else {
-                    // don't swallow trailing sentence punctuation into the URL
-                    var url = token, trailing = ""
-                    while let last = url.last, ".,;:!?".contains(last) { trailing = String(last) + trailing; url = String(url.dropLast()) }
-                    let target = url.hasPrefix("www.") ? "https://\(url)" : url   // bare www. → https
-                    if let u = URL(string: target) {
-                        var s = style
-                        s.link = u
-                        append(url, s, accent: true, &out)
-                    } else {
-                        append(url, style, accent: false, &out)
-                    }
-                    if !trailing.isEmpty { append(trailing, style, accent: false, &out) }
-                }
-            } else if token.hasPrefix("((") {
-                let id = String(token.dropFirst(2).dropLast(2))
-                let target = doc?.nodes[id]?.text ?? ""
-                var s = style
-                s.link = URL(string: "rhizome://n/\(id)")   // tapping a block ref jumps to its bullet
-                append(plainStrip(target), s, accent: true, &out, blockRef: true)
-            } else if token.hasPrefix("[[") {
-                // a raw [[Name]] (unresolved wiki link) → link to the page with that title, if one exists
-                let name = String(token.dropFirst(2).dropLast(2))
-                var s = style
-                if let pid = pageID(named: name, doc: doc) { s.link = URL(string: "rhizome://n/\(pid)") }
-                if RZTheme.skin == .roam { appendBrackets("[[", s, &out) }
-                append(name, s, accent: true, &out)
-                if RZTheme.skin == .roam { appendBrackets("]]", s, &out) }
-            } else {
-                // #tag or #[[Multi word]] → tapping navigates to the page with that name
-                // (create-on-tap, like the web's openTag). Keep the visible text as the raw token.
-                var name = String(token.dropFirst())            // drop the leading '#'
-                if name.hasPrefix("[[") && name.hasSuffix("]]") { name = String(name.dropFirst(2).dropLast(2)) }
-                var s = style
-                if let enc = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
-                    s.link = URL(string: "rhizome://tag/\(enc)")
-                }
-                append(token, s, accent: true, &out, pill: true)   // #tag
-            }
-            last = m.range.location + m.range.length
-        }
-        if last < ns.length {
-            append(ns.substring(from: last), style, accent: false, &out)
-        }
-    }
-
-    private static func append(
-        _ string: String, _ style: Style, accent isAccent: Bool, _ out: inout AttributedString,
-        pill: Bool = false, blockRef: Bool = false
-    ) {
-        guard !string.isEmpty else { return }
+    private static func render(_ p: RichPiece, size: CGFloat) -> AttributedString {
         // The Roam skin renders a #tag as the web's pill: accent-soft background, 0.92em, with the
         // CSS's 0.4em side padding faked by a narrow no-break space inside the tinted run.
-        let pilled = pill && RZTheme.skin == .roam
-        var piece = AttributedString(pilled ? "\u{202F}\(string)\u{202F}" : string)
-        let styled = style.bold || style.italic || style.code
+        let pilled = p.pill && RZTheme.skin == .roam
+        var piece = AttributedString(pilled ? "\u{202F}\(p.text)\u{202F}" : p.text)
+        let styled = p.bold || p.italic || p.code
         #if canImport(SwiftUI)
-        if styled, renderSize > 0 {
+        if styled, size > 0 {
             // give styled runs an explicit font so italic actually slants (the upright faces carry
             // no italic), in whichever typeface is selected
-            if style.code {
-                piece.font = .system(size: renderSize, design: .monospaced)
+            if p.code {
+                piece.font = .system(size: size, design: .monospaced)
             } else {
-                piece.font = .rzFace(renderSize, weight: style.bold ? .bold : .regular, italic: style.italic)
+                piece.font = .rzFace(size, weight: p.bold ? .bold : .regular, italic: p.italic)
             }
         } else if styled {
             var intent: InlinePresentationIntent = []
-            if style.bold { intent.insert(.stronglyEmphasized) }
-            if style.italic { intent.insert(.emphasized) }
-            if style.code { intent.insert(.code) }
+            if p.bold { intent.insert(.stronglyEmphasized) }
+            if p.italic { intent.insert(.emphasized) }
+            if p.code { intent.insert(.code) }
             piece.inlinePresentationIntent = intent
         }
         #else
         if styled {
             var intent: InlinePresentationIntent = []
-            if style.bold { intent.insert(.stronglyEmphasized) }
-            if style.italic { intent.insert(.emphasized) }
-            if style.code { intent.insert(.code) }
+            if p.bold { intent.insert(.stronglyEmphasized) }
+            if p.italic { intent.insert(.emphasized) }
+            if p.code { intent.insert(.code) }
             piece.inlinePresentationIntent = intent
         }
         #endif
-        if style.strike { piece.strikethroughStyle = .single }
-        if style.underline { piece.underlineStyle = .single }
+        if p.strike { piece.strikethroughStyle = .single }
+        if p.underline { piece.underlineStyle = .single }
         #if canImport(SwiftUI)
-        if let tc = style.textColor {
+        if let tc = p.textColor {
             piece.foregroundColor = tc.color               // explicit text colour wins
-        } else if isAccent || style.link != nil {
+        } else if p.accent || p.link != nil {
             // a link into the graph takes the skin's link colour (Roam's blue); tags, web links and
             // the rest stay on the accent
-            piece.foregroundColor = isNodeLink(style.link) ? link : accent
+            piece.foregroundColor = isNodeLink(p.link) ? link : accent
         }
-        if let url = style.link { piece.link = url; piece.underlineStyle = nil }
+        if let url = p.link { piece.link = url; piece.underlineStyle = nil }
         // Roam draws a ((block reference)) as ordinary underlined text, not a coloured link
-        if blockRef, RZTheme.skin == .roam, style.textColor == nil {
+        if p.blockRef, RZTheme.skin == .roam, p.textColor == nil {
             piece.foregroundColor = ink
             piece.underlineStyle = .single
         }
-        if let h = style.highlight { piece.backgroundColor = h.color }
+        if let h = p.highlight { piece.backgroundColor = h.color }
         if pilled {
             piece.backgroundColor = tagFill               // web --accent-soft
-            if !styled, renderSize > 0 { piece.font = .rzFace(renderSize * 0.92) }
+            if !styled, size > 0 { piece.font = .rzFace(size * 0.92) }
         }
         #endif
-        out.append(piece)
+        return piece
     }
 
     /// The id of the page whose title matches `name` (case-insensitive), else nil. Matches both

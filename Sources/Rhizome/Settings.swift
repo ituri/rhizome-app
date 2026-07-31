@@ -190,20 +190,20 @@ struct AppearanceSettingsView: View {
                 }
                 Toggle("Scale with system text size", isOn: $model.scaleWithSystem)
                 Toggle("Enlarge the line you're editing", isOn: $model.enlargeActiveLine)
-                // Live preview of size, spacing, typeface and skin (title, link brackets, tag pill).
-                // The page link is written as a resolved `<a href="#/n/…">` so it previews in the
-                // skin's real link colour — a bare [[name]] has no target here and would stay on the
-                // accent. Not hit-testable: it's a sample, not something to navigate to.
+                // Live preview of size, spacing, typeface and skin (title, link brackets, tag
+                // pill) — rendered by the outline's real display view, so pills and underlines
+                // look exactly as they will in the outline. The page link is written as a resolved
+                // `<a href="#/n/…">` so it previews in the skin's real link colour. Not
+                // hit-testable: it's a sample, not something to navigate to.
                 VStack(alignment: .leading, spacing: 6) {
                     Text("July 29th, 2026").font(.rzTitle(model.fontSize)).lineLimit(1).minimumScaleFactor(0.5)
-                    Text(RichText.attributed(
-                        ##"The quick #brown fox jumps over the <a href="#/n/preview">lazy dog</a>."##,
-                        doc: nil, size: model.fontSize
-                    ))
-                    .font(model.scaleWithSystem ? .rz(model.fontSize) : .rzFixed(model.fontSize))
-                    .lineSpacing(model.lineSpacing)
+                        .foregroundStyle(Color.rzInk)
+                    RichTextDisplay(
+                        raw: ##"The quick #brown fox jumps over the <a href="#/n/preview">lazy dog</a>."##,
+                        doc: nil, size: model.fontSize, baseColor: RichEditor.ink,
+                        scaled: model.scaleWithSystem, interactive: false
+                    )
                 }
-                .foregroundStyle(Color.rzInk)
                 .allowsHitTesting(false)
                 Button("Reset to defaults", role: .destructive) { model.resetDesign() }
             } footer: {
