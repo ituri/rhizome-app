@@ -27,12 +27,13 @@ public enum AccentChoice: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Visual skin — the plain "Paper" default, or "Roam", the web app's Roam custom-CSS theme.
+/// Visual skin — the plain "Paper" default, or "Roam", the look of Phil's web instance.
 ///
-/// Roam is *not* a full palette swap: the web CSS keeps the warm paper background, the warm rules
-/// and the chosen accent, and changes only the body ink (light mode), the type scale, the link
-/// colour + its faint `[[brackets]]`, the tag pills, the reference block and the bullet dots.
-/// Sits on top of the Light/Auto/Dark colour scheme, so Roam works in dark too.
+/// The web look is TWO layers: the checked-in Roam block at the end of style.css (type scale,
+/// titles, blue [[bracketed]] links, pills, ref styling) PLUS the injected `rhizome/css` graph
+/// page — a full BlueprintJS palette swap that pins `--accent: #106ba3` for links, tags and
+/// buttons. Roam here mirrors both. Sits on top of the Light/Auto/Dark colour scheme; the web
+/// page is light-only, so the dark tones are derived Blueprint darks.
 public enum RZSkin: String, CaseIterable, Identifiable, Sendable {
     case paper, roam
     public var id: String { rawValue }
@@ -104,25 +105,20 @@ public enum RZTheme {
     nonisolated(unsafe) public static var skin: RZSkin = .paper
     nonisolated(unsafe) public static var font: RZFontChoice = .inter
 
-    /// Body-text ink, light + dark. The web's Roam skin only re-tints the **light** ink
-    /// (`html:not([data-theme="dark"]) { --ink: #202b33 }`) — dark mode keeps the warm tone, so the
-    /// two skins share it. Read by the palette, the editor and RichText so all three stay in step.
+    /// Body-text ink for the active skin, light + dark — Paper's warm brown-black, or Roam's
+    /// Blueprint `#182026` (the injected web CSS's `--ink`) / `#e1e8ed`. Read by the palette, the
+    /// editor and RichText so all three stay in step.
     public static var ink: (light: (Double, Double, Double), dark: (Double, Double, Double)) {
-        (light: skin == .roam ? (0.1255, 0.1686, 0.2000) : (0.1847, 0.14, 0.1105),
-         dark: (0.8975, 0.8815, 0.849))
+        skin == .roam
+            ? ((0.0941, 0.1255, 0.1490), (0.8824, 0.9098, 0.9294))
+            : ((0.1847, 0.14, 0.1105), (0.8975, 0.8815, 0.849))
     }
 
-    /// Blueprint blue (`#106ba3` / `#61a5d1`) — the colour Roam gives an internal `[[page]]` link.
-    /// Links only: the web CSS leaves `--accent` alone, so tags and buttons stay on the accent.
+    /// Blueprint blue (`#106ba3` / `#61a5d1`) — Roam's pinned accent: links, tags and buttons
+    /// (the injected web CSS's `--accent`).
     public static let roamBlue: (light: (Double, Double, Double), dark: (Double, Double, Double)) =
         ((0.0627, 0.4196, 0.6392), (0.3804, 0.6471, 0.8196))
     /// The faint `[[` `]]` brackets Roam draws around an internal link (`#ced9e0` / `#44545f`).
     public static let roamBracket: (light: (Double, Double, Double), dark: (Double, Double, Double)) =
         ((0.8078, 0.8510, 0.8784), (0.2667, 0.3294, 0.3725))
-    /// Blueprint grey `#8a9ba8` — Roam's reference headings (web `.backlinks h3`), hard-coded in the
-    /// CSS and therefore the same tone in light and dark.
-    public static let roamGrey: (Double, Double, Double) = (0.5412, 0.6078, 0.6588)
-    /// Roam's lighter bullet dot `#a7b6c2` — light theme only (web
-    /// `:root:not([data-theme="dark"]) .bullet .dot`); dark keeps the warm `--ink-soft`.
-    public static let roamDot: (Double, Double, Double) = (0.6549, 0.7137, 0.7608)
 }

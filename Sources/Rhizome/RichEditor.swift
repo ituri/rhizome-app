@@ -46,17 +46,17 @@ enum RichEditor {
             return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
         }
     }
-    /// Tags and the caret — the chosen accent in both skins (web `caret-color: var(--accent)`,
-    /// `a.tag { color: var(--accent) }`).
-    static var accent: UIColor { rzAccentUIColor(RZTheme.accent) }
-    /// `[[page]]` link runs — Blueprint blue under the Roam skin, the accent otherwise.
-    static var link: UIColor {
-        guard RZTheme.skin == .roam else { return accent }
+    /// Tags, links and the caret — Roam pins the accent to Blueprint blue (the injected web CSS's
+    /// `--accent: #106ba3`), Paper follows the chosen accent.
+    static var accent: UIColor {
+        guard RZTheme.skin == .roam else { return rzAccentUIColor(RZTheme.accent) }
         return UIColor { trait in
             let c = trait.userInterfaceStyle == .dark ? RZTheme.roamBlue.dark : RZTheme.roamBlue.light
             return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
         }
     }
+    /// `[[page]]` link runs — same as the accent (under Roam both are Blueprint blue).
+    static var link: UIColor { accent }
 
     /// The paragraph style carrying the configured line spacing, applied across the whole editor.
     static func paragraphStyle() -> NSParagraphStyle {

@@ -28,27 +28,30 @@ public struct RichPiece: Sendable {
 /// and `((block references))` — into `RichPiece` runs, and renders them.
 public enum RichText {
     #if canImport(SwiftUI)
-    /// The accent for tags in displayed text — follows the selected accent, and (on UIKit) the
-    /// light/dark theme, so it re-resolves when the colour scheme flips. Both skins use it: the web's
-    /// Roam CSS keeps `a.tag { color: var(--accent) }`.
-    public static var accent: Color { tone(RZTheme.accent.light, RZTheme.accent.dark) }
-
-    /// An internal `[[page]]` link — the one place the Roam skin overrides the accent, with
-    /// Blueprint blue (web `a[href^="#/n/"]`).
-    static var link: Color {
-        RZTheme.skin == .roam ? tone(RZTheme.roamBlue.light, RZTheme.roamBlue.dark) : accent
+    /// The tuple pair for the effective accent — Roam pins it to Blueprint blue (the injected web
+    /// CSS's `--accent: #106ba3`, "page links, tags, buttons"), Paper follows the user's choice.
+    static var accentTones: (light: (Double, Double, Double), dark: (Double, Double, Double)) {
+        RZTheme.skin == .roam ? RZTheme.roamBlue : (RZTheme.accent.light, RZTheme.accent.dark)
     }
+
+    /// The accent for tags/links in displayed text — re-resolves with the light/dark theme (on
+    /// UIKit), so it flips with the colour scheme.
+    public static var accent: Color { tone(accentTones.light, accentTones.dark) }
+
+    /// An internal `[[page]]` link — same as the accent (under Roam both are Blueprint blue).
+    static var link: Color { accent }
 
     /// The tag pill's fill — web `--accent-soft`, the accent at 12% (light) / 16% (dark).
     static var tagFill: Color {
-        let a = RZTheme.accent
         #if canImport(UIKit)
         return Color(uiColor: UIColor { trait in
+            let a = RichText.accentTones
             let isDark = trait.userInterfaceStyle == .dark
             let c = isDark ? a.dark : a.light
             return UIColor(red: c.0, green: c.1, blue: c.2, alpha: isDark ? 0.16 : 0.12)
         })
         #else
+        let a = accentTones
         return Color(red: a.light.0, green: a.light.1, blue: a.light.2).opacity(0.12)
         #endif
     }
@@ -334,7 +337,8 @@ public enum RichText {
         if let h = p.highlight { piece.backgroundColor = h.color }
         if pilled {
             piece.backgroundColor = tagFill               // web --accent-soft
-            if !styled, size > 0 { piece.font = .rzFace(size * 0.92) }
+            // 0.92em at weight 500 — the injected web CSS's `.tag { font-weight: 500 }`
+            if !styled, size > 0 { piece.font = .rzFace(size * 0.92, weight: .medium) }
         }
         #endif
         return piece

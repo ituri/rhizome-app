@@ -7,6 +7,9 @@ import RhizomeKit
 extension NSAttributedString.Key {
     /// Marks a #tag run the display view draws a rounded pill behind (Roam skin).
     static let rzPill = NSAttributedString.Key("rzPill")
+    /// Marks a ((block ref)) run the display view draws Roam's grey box behind
+    /// (the injected web CSS's `a.block-ref { background: #f0f3f5; border-radius: 4px }`).
+    static let rzRefBox = NSAttributedString.Key("rzRefBox")
 }
 
 /// Renders `RichText.pieces` as an `NSAttributedString` for the resting-row display view — the
@@ -27,15 +30,19 @@ enum RichDisplay {
         }
     }
     /// The tag pill's fill — web `--accent-soft` (accent at 12% light / 16% dark). Reads the
-    /// current accent at resolve time so an accent change re-tints on the next render.
+    /// effective accent at resolve time — Blueprint blue under Roam — so a change re-tints on
+    /// the next render.
     static var pillFill: UIColor {
         UIColor { trait in
-            let a = RZTheme.accent
+            let a: (light: (Double, Double, Double), dark: (Double, Double, Double)) =
+                RZTheme.skin == .roam ? RZTheme.roamBlue : (RZTheme.accent.light, RZTheme.accent.dark)
             let isDark = trait.userInterfaceStyle == .dark
             let c = isDark ? a.dark : a.light
             return UIColor(red: c.0, green: c.1, blue: c.2, alpha: isDark ? 0.16 : 0.12)
         }
     }
+    /// The block-ref box — the injected web CSS's `#f0f3f5`, with a derived Blueprint dark.
+    static var refBoxFill: UIColor { uiTone((0.9412, 0.9529, 0.9608), (0.1647, 0.1922, 0.2275)) }
     private static func uiTone(_ light: (Double, Double, Double), _ dark: (Double, Double, Double)) -> UIColor {
         UIColor { trait in
             let c = trait.userInterfaceStyle == .dark ? dark : light
@@ -81,10 +88,18 @@ enum RichDisplay {
         if p.code || baseCode { fmt += "c" }
         if p.bold || baseBold { fmt += "b" }
         if p.italic { fmt += "i" }
-        // the pill's 0.92em only applies to an unstyled tag, matching the SwiftUI renderer
+        // the pill's 0.92em only applies to an unstyled tag, matching the SwiftUI renderer;
+        // an unstyled tag also gets weight 500 (the injected web CSS's `.tag { font-weight: 500 }`)
         let styled = p.bold || p.italic || p.code
         let fontSize = (pilled && !styled) ? size * 0.92 : size
-        var attrs: [NSAttributedString.Key: Any] = [.font: face(fontSize, fmt)]
+        var font = face(fontSize, fmt)
+        if pilled, !styled {
+            let d = font.fontDescriptor.addingAttributes(
+                [.traits: [UIFontDescriptor.TraitKey.weight: UIFont.Weight.medium]]
+            )
+            font = UIFont(descriptor: d, size: fontSize)
+        }
+        var attrs: [NSAttributedString.Key: Any] = [.font: font]
 
         // colour: explicit text colour > graph-link blue > accent > surrounding ink
         if let tc = p.textColor {
@@ -98,10 +113,12 @@ enum RichDisplay {
         if p.underline, p.link == nil { attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
         if let url = p.link { attrs[.link] = url }
         // Roam draws a ((block reference)) as ordinary ink with a soft underline (ink at 35%)
+        // in a light grey box (drawn rounded by the display view)
         if p.blockRef, RZTheme.skin == .roam, p.textColor == nil {
             attrs[.foregroundColor] = RichEditor.ink
             attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
             attrs[.underlineColor] = blockRefLine
+            attrs[.rzRefBox] = true
         }
         if let h = p.highlight { attrs[.backgroundColor] = h.uiColor }
         if pilled { attrs[.rzPill] = true }   // fill drawn as a rounded rect by the display view
@@ -121,6 +138,7 @@ final class PillTextView: UITextView {
     var onLink: ((URL) -> Void)?
 
     private let pillLayer = CAShapeLayer()
+    private let refBoxLayer = CAShapeLayer()
     private var linkRects: [(rect: CGRect, url: URL)] = []
 
     init() {
@@ -140,6 +158,7 @@ final class PillTextView: UITextView {
         textContainer.lineFragmentPadding = 0
         linkTextAttributes = [:]                    // keep the runs' own colours
         layer.insertSublayer(pillLayer, at: 0)      // pills under the glyphs
+        layer.insertSublayer(refBoxLayer, at: 0)    // block-ref boxes under those
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: PillTextView, _) in
             self.refillPills()
@@ -167,7 +186,10 @@ final class PillTextView: UITextView {
     private func recomputeDecorations() {
         linkRects = []
         var pills: [CGRect] = []
-        guard let ns = attributedText, ns.length > 0 else { pillLayer.path = nil; return }
+        var refBoxes: [CGRect] = []
+        guard let ns = attributedText, ns.length > 0 else {
+            pillLayer.path = nil; refBoxLayer.path = nil; return
+        }
         textLayoutManager?.ensureLayout(for: textLayoutManager!.documentRange)
         let whole = NSRange(location: 0, length: ns.length)
         ns.enumerateAttribute(.rzPill, in: whole) { value, range, _ in
@@ -195,6 +217,11 @@ final class PillTextView: UITextView {
                 return r
             }
         }
+        ns.enumerateAttribute(.rzRefBox, in: whole) { value, range, _ in
+            guard value != nil else { return }
+            // web `a.block-ref { padding: 0 3px }` — a slim box hugging the line
+            refBoxes += segments(range).map { $0.frame.insetBy(dx: -3, dy: -0.5) }
+        }
         ns.enumerateAttribute(.link, in: whole) { value, range, _ in
             guard let url = value as? URL ?? (value as? String).flatMap(URL.init) else { return }
             linkRects += segments(range).map { ($0.frame.insetBy(dx: -3, dy: -3), url) }
@@ -202,11 +229,15 @@ final class PillTextView: UITextView {
         let path = UIBezierPath()
         for r in pills { path.append(UIBezierPath(roundedRect: r, cornerRadius: min(7, r.height / 2))) }
         pillLayer.path = path.isEmpty ? nil : path.cgPath
+        let refPath = UIBezierPath()
+        for r in refBoxes { refPath.append(UIBezierPath(roundedRect: r, cornerRadius: 4)) }   // web 4px
+        refBoxLayer.path = refPath.isEmpty ? nil : refPath.cgPath
         refillPills()
     }
 
     fileprivate func refillPills() {
         pillLayer.fillColor = RichDisplay.pillFill.resolvedColor(with: traitCollection).cgColor
+        refBoxLayer.fillColor = RichDisplay.refBoxFill.resolvedColor(with: traitCollection).cgColor
     }
 
     /// The on-screen rects of a character range (one per line fragment) with the baseline offset

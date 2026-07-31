@@ -153,7 +153,7 @@ struct PageView: View {
             showRename = true
         } label: {
             Text(pageTitle)
-                .font(.rzTitle(model.fontSize))
+                .font(.rzTitle(model.fontSize, page: true))   // web .zoom-title (Inter 800 in Roam)
                 .foregroundStyle(Color.rzInk)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -30,16 +30,17 @@ extension Font {
         .rzFace(size, weight: weight, fixed: true)
     }
 
-    /// A page/day title at the active skin's scale — Roam's big Inter 500 display line (web
-    /// `.zoom-title`: 2.57× the body, weight 500), Paper's bold heading. Roam pins the title to Inter
-    /// even when the body text is set to another face, exactly as the web CSS does
-    /// (`.zoom-title { font-family: var(--sans) }`, which `[data-font]` doesn't reach).
-    static func rzTitle(_ body: Double) -> Font {
+    /// A page/day title at the active skin's scale, always Inter under Roam (web
+    /// `.zoom-title { font-family: var(--sans) }`, which `[data-font]` doesn't reach). Roam day
+    /// titles are Inter **500** (the style.css block); a page title is **800** — the injected
+    /// `rhizome/css` page's `.zoom-title { font-weight: 800 }` wins over the block's 500 but
+    /// doesn't reach `.day-title`. Paper keeps its bold heading.
+    static func rzTitle(_ body: Double, page: Bool = false) -> Font {
         let skin = RZTheme.skin
         let roam = skin == .roam
         return .rzFace(
             min(body * skin.titleScale, skin.titleCap),
-            weight: roam ? .medium : .bold,
+            weight: roam ? (page ? .heavy : .medium) : .bold,
             choice: roam ? .inter : RZTheme.font
         )
     }
