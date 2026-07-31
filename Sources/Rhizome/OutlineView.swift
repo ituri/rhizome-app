@@ -117,13 +117,16 @@ struct OutlineRow: View {
             let isQuote = fmt == "quote", isCode = fmt == "codeblock"
             let isHeading = fmt == "h1" || fmt == "h2" || fmt == "h3"
             ZStack(alignment: .topLeading) {
-                // Full-row tap-to-edit — but on a link-bearing row it would sit under the Text and
-                // swallow link taps (SwiftUI resolves a background .onTapGesture ahead of the Text's
-                // own link tap → openURL never fires). Disable it there; those rows edit via long-press.
+                // Full-row edit layer. On a link-bearing row its TAP gesture must be off — it sits
+                // under the Text, and SwiftUI arbitrates a background .onTapGesture ahead of the
+                // Text's own link tap, so links would die (the 563983d bug). But the layer must STAY
+                // hit-testable: the ZStack's long-press only fires when the touch lands on a
+                // hit-testable descendant, and on the empty part of the row this layer is the only
+                // one — allowsHitTesting(false) here made address/geotag bullets uneditable.
                 Color.clear
                     .contentShape(Rectangle())
-                    .onTapGesture { model.beginEdit(id) }
-                    .allowsHitTesting(!hasLinks)
+                    .gesture(TapGesture().onEnded { model.beginEdit(id) },
+                             including: hasLinks ? .subviews : .all)
                 HStack(spacing: 8) {
                     if isQuote {
                         Rectangle().fill(Color.rzAccent.opacity(0.4)).frame(width: 3)
@@ -139,10 +142,19 @@ struct OutlineRow: View {
                         .strikethrough(isDone)
                         .foregroundStyle(isDone ? Color.rzDone : (isQuote ? Color.rzInkSoft : Color.rzInk))
                         .allowsHitTesting(hasLinks)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: hasLinks ? nil : .infinity, alignment: .leading)
                         .padding(isCode ? 6 : 0)
                         .background(isCode ? Color.rzInkFaint.opacity(0.1) : Color.clear,
                                     in: RoundedRectangle(cornerRadius: 6))
+                    // Tap-to-edit beside the text on a link row — a fully-linked bullet (address,
+                    // shared URL) has no other tappable spot. Sits NEXT to the Text, not under it,
+                    // so it can't win a link tap the way the full-row layer did.
+                    if hasLinks {
+                        Color.clear
+                            .frame(maxWidth: .infinity, minHeight: lineH)
+                            .contentShape(Rectangle())
+                            .onTapGesture { model.beginEdit(id) }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, minHeight: lineH, alignment: .leading)   // stay tappable when empty
