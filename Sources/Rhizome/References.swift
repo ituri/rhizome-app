@@ -21,7 +21,7 @@ struct ReferenceRow: View {
             // display view must not intercept link taps here (unlike outline rows)
             RichTextDisplay(
                 raw: model.doc?.nodes[id]?.text ?? "", doc: model.doc, size: model.fontSize,
-                baseColor: RichEditor.ink, scaled: false, maxLines: 4, interactive: false
+                baseColor: RichEditor.ink, maxLines: 4, interactive: false
             )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 6)

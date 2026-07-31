@@ -30,8 +30,11 @@ enum RichEditor {
     // configurable from Settings (AppModel mirrors the persisted values into these)
     static var fontSize: CGFloat = 15.5
     static var lineSpacing: CGFloat = 1
-    /// Scale applied ONLY to the editor's glyphs (not the row height), so the active line can be
-    /// shrunk to match the SwiftUI display text. 1 = keep the UITextView's slightly larger look.
+    /// Follow the system text size (Dynamic Type). Applied INSIDE uiFont, so the editor, the
+    /// resting display rows and the row heights all scale from the same place and can't drift.
+    static var scaleWithSystem = false
+    /// Scale applied ONLY to the editor's glyphs — the "Enlarge the line you're editing" toggle.
+    /// 1 = the active line matches the resting rows exactly (same uiFont pipeline).
     static var editScale: CGFloat = 1
     private static var editFontSize: CGFloat { fontSize * editScale }
 
@@ -68,10 +71,15 @@ enum RichEditor {
     /// editor glyphs follow editScale; row heights use rowLineHeight() at the display size
     static func font(_ fmt: String = "") -> UIFont { uiFont(size: editFontSize, fmt) }
 
-    /// The selected typeface as a UIFont. Italic uses the bundled italic face (Inter and Newsreader
-    /// ship them as separate files); the system italic stands in if it's somehow unavailable.
-    /// A code run is always monospaced.
+    /// The selected typeface as a UIFont, Dynamic-Type-scaled when the setting is on. Italic uses
+    /// the bundled italic face (Inter and Newsreader ship them as separate files); the system
+    /// italic stands in if it's somehow unavailable. A code run is always monospaced.
     static func uiFont(size rawSize: CGFloat, _ fmt: String = "") -> UIFont {
+        let f = baseFont(size: rawSize, fmt)
+        return scaleWithSystem ? UIFontMetrics.default.scaledFont(for: f) : f
+    }
+
+    private static func baseFont(size rawSize: CGFloat, _ fmt: String) -> UIFont {
         let choice = RZTheme.font
         let size = rawSize * choice.sizeFactor
         if fmt.contains("c") {

@@ -52,16 +52,17 @@ enum RichDisplay {
 
     /// Render `raw` at `size`. `baseColor` is the surrounding ink (done/quote rows tint it),
     /// `baseBold`/`baseCode` carry the block format (headings / codeblock), `strikeAll` the done
-    /// state, `scaled` opts into Dynamic Type.
+    /// state. Fonts come from RichEditor.uiFont, which applies Dynamic Type itself when the
+    /// setting is on — so display, editor and row heights scale identically.
     static func attributed(
         _ raw: String, doc: RDoc?, size: CGFloat, baseColor: UIColor,
-        baseBold: Bool = false, baseCode: Bool = false, strikeAll: Bool = false, scaled: Bool = false
+        baseBold: Bool = false, baseCode: Bool = false, strikeAll: Bool = false
     ) -> NSAttributedString {
         let out = NSMutableAttributedString()
         let para = RichEditor.paragraphStyle()
         for p in RichText.pieces(raw, doc: doc) {
             out.append(render(p, size: size, baseColor: baseColor, baseBold: baseBold,
-                              baseCode: baseCode, strikeAll: strikeAll, scaled: scaled))
+                              baseCode: baseCode, strikeAll: strikeAll))
         }
         out.addAttribute(.paragraphStyle, value: para, range: NSRange(location: 0, length: out.length))
         return out
@@ -69,12 +70,9 @@ enum RichDisplay {
 
     private static func render(
         _ p: RichPiece, size: CGFloat, baseColor: UIColor,
-        baseBold: Bool, baseCode: Bool, strikeAll: Bool, scaled: Bool
+        baseBold: Bool, baseCode: Bool, strikeAll: Bool
     ) -> NSAttributedString {
-        func face(_ s: CGFloat, _ fmt: String) -> UIFont {
-            let f = RichEditor.uiFont(size: s, fmt)
-            return scaled ? UIFontMetrics.default.scaledFont(for: f) : f
-        }
+        func face(_ s: CGFloat, _ fmt: String) -> UIFont { RichEditor.uiFont(size: s, fmt) }
         if p.bracket {   // Roam's faint [[ ]] — part of the link, so tapping them navigates too
             var attrs: [NSAttributedString.Key: Any] = [
                 .font: face(size, baseCode ? "c" : ""), .foregroundColor: bracket
@@ -97,7 +95,7 @@ enum RichDisplay {
             let d = font.fontDescriptor.addingAttributes(
                 [.traits: [UIFontDescriptor.TraitKey.weight: UIFont.Weight.medium]]
             )
-            font = UIFont(descriptor: d, size: fontSize)
+            font = UIFont(descriptor: d, size: 0)   // size 0: keep the (possibly scaled) point size
         }
         var attrs: [NSAttributedString.Key: Any] = [.font: font]
 
@@ -269,7 +267,6 @@ struct RichTextDisplay: UIViewRepresentable {
     var baseBold = false
     var baseCode = false
     var strikeAll = false
-    var scaled = false
     var maxLines = 0
     var interactive = true
 
@@ -285,7 +282,7 @@ struct RichTextDisplay: UIViewRepresentable {
         tv.textContainer.lineBreakMode = .byTruncatingTail
         tv.attributedText = RichDisplay.attributed(
             raw, doc: doc, size: size, baseColor: baseColor,
-            baseBold: baseBold, baseCode: baseCode, strikeAll: strikeAll, scaled: scaled
+            baseBold: baseBold, baseCode: baseCode, strikeAll: strikeAll
         )
         tv.setNeedsLayout()
     }

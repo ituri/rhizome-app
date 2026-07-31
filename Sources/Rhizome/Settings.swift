@@ -202,13 +202,13 @@ struct AppearanceSettingsView: View {
                     RichTextDisplay(
                         raw: ##"The quick #brown fox jumps over the <a href="#/n/preview">lazy dog</a>."##,
                         doc: nil, size: model.fontSize, baseColor: RichEditor.ink,
-                        scaled: model.scaleWithSystem, interactive: false
+                        interactive: false
                     )
                 }
                 .allowsHitTesting(false)
                 Button("Reset to defaults", role: .destructive) { model.resetDesign() }
             } footer: {
-                Text("Skin: Paper is the app's warm look, Roam matches the web — the BlueprintJS palette (white paper, cool greys) with links, tags and buttons pinned to Roam blue, 14 pt at a 1.5 line height, big Inter titles and [[bracketed]] links. Picking a skin applies its type scale; size and spacing stay adjustable. With scaling off, text stays a fixed size so the line you're editing matches the rest.")
+                Text("Skin: Paper is the app's warm look, Roam matches the web — the BlueprintJS palette (white paper, cool greys) with links, tags and buttons pinned to Roam blue, 14 pt at a 1.5 line height, big Inter titles and [[bracketed]] links. Picking a skin applies its type scale; size and spacing stay adjustable. Scaling follows the iOS text size for editing and resting text alike.")
             }
         }
         .paperBackground()

@@ -129,8 +129,7 @@ struct OutlineRow: View {
                     RichTextDisplay(
                         raw: raw, doc: model.doc, size: size,
                         baseColor: isDone ? RichDisplay.done : (isQuote ? RichDisplay.inkSoft : RichEditor.ink),
-                        baseBold: isHeading, baseCode: isCode, strikeAll: isDone,
-                        scaled: model.scaleWithSystem
+                        baseBold: isHeading, baseCode: isCode, strikeAll: isDone
                     )
                     .padding(isCode ? 6 : 0)
                     .background(isCode ? Color.rzInkFaint.opacity(0.1) : Color.clear,

@@ -196,19 +196,24 @@ final class AppModel {
     /// Tools not currently in the toolbar (available to add).
     var availableTools: [EditorTool] { EditorTool.allCases.filter { !editorTools.contains($0) } }
 
-    /// Scale the outline text with the iOS system text size (Dynamic Type). Off keeps it fixed at
-    /// your chosen size, so the line you're editing stays the same size as the rest.
+    /// Scale the outline text with the iOS system text size (Dynamic Type). Applied inside
+    /// RichEditor.uiFont, so the resting rows, the editor and the row heights scale together.
     var scaleWithSystem: Bool {
-        didSet { UserDefaults.standard.set(scaleWithSystem, forKey: "scaleWithSystem") }
+        didSet {
+            UserDefaults.standard.set(scaleWithSystem, forKey: "scaleWithSystem")
+            RichEditor.scaleWithSystem = scaleWithSystem
+            editorReload?()
+        }
     }
 
-    /// The UITextView editor renders the same Inter font a touch larger than the SwiftUI display
-    /// text, so the line you're editing can look bigger than the rest. On = keep it (a subtle focus
-    /// emphasis); off = scale the active line down to match the resting bullets. Persisted.
+    /// On = the line you're editing renders a touch larger than the resting bullets (a subtle
+    /// focus emphasis). Off = exactly the same size — display and editor share one font pipeline
+    /// since the TextKit display rework, so 1.0 really is a pixel match. (The old 0.92 compensated
+    /// for SwiftUI Text rendering smaller than the UITextView; that difference no longer exists.)
     var enlargeActiveLine: Bool {
         didSet {
             UserDefaults.standard.set(enlargeActiveLine, forKey: "enlargeActiveLine")
-            RichEditor.editScale = enlargeActiveLine ? 1 : 0.92
+            RichEditor.editScale = enlargeActiveLine ? 1.08 : 1
             editorReload?()   // re-render the open editor so the change shows immediately
         }
     }
@@ -269,10 +274,12 @@ final class AppModel {
         geoResolveAddress = UserDefaults.standard.object(forKey: "geoResolveAddress") as? Bool ?? true
         dictationLocaleID = UserDefaults.standard.string(forKey: "dictationLocaleID")
         appLock = UserDefaults.standard.object(forKey: "appLock") as? Bool ?? false
-        scaleWithSystem = UserDefaults.standard.object(forKey: "scaleWithSystem") as? Bool ?? false
+        let scaleSys = UserDefaults.standard.object(forKey: "scaleWithSystem") as? Bool ?? false
+        scaleWithSystem = scaleSys
+        RichEditor.scaleWithSystem = scaleSys
         let enlarge = UserDefaults.standard.object(forKey: "enlargeActiveLine") as? Bool ?? true
         enlargeActiveLine = enlarge
-        RichEditor.editScale = enlarge ? 1 : 0.92
+        RichEditor.editScale = enlarge ? 1.08 : 1
         editorTools = (UserDefaults.standard.array(forKey: "editorTools") as? [String])?.compactMap(EditorTool.init) ?? EditorTool.defaultOrder
         RichEditor.fontSize = CGFloat(fontSize)
         RichEditor.lineSpacing = CGFloat(lineSpacing)
