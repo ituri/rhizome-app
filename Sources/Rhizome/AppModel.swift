@@ -860,10 +860,13 @@ final class AppModel {
 
     /// Persist a specific node's text — used on blur/transition so a bullet's resolved links get
     /// saved even when focus has already moved to another row (editText tracks only the active row).
-    func persistText(_ id: String, _ text: String) {
+    func persistText(_ id: String, _ raw: String) {
+        // the revealed block marker is view-only — never store it (this path runs from the
+        // editor's didEndEditing and would otherwise bypass flushCurrent's stripping)
+        let text = splitBlockMark(raw).rest
         guard doc?.nodes[id] != nil, text != (doc?.nodes[id]?.text ?? "") else { return }
         doc?.nodes[id]?.text = text
-        if editingID == id { editText = text }
+        if editingID == id { editText = raw }
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(text)])])
     }
 
