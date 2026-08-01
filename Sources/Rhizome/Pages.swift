@@ -66,14 +66,6 @@ struct PagesView: View {
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search pages")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { GraphSwitcher() }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        if let doc = model.doc {
-                            _ = model.insertChild(of: doc.root)
-                            Task { await model.loadDoc() }
-                        }
-                    } label: { Image(systemName: "plus") }
-                }
                 ToolbarItem(placement: .topBarTrailing) { SyncIndicator() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: { Image(systemName: "gearshape") }
