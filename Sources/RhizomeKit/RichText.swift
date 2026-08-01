@@ -337,8 +337,9 @@ public enum RichText {
         if let h = p.highlight { piece.backgroundColor = h.color }
         if pilled {
             piece.backgroundColor = tagFill               // web --accent-soft
-            // 0.92em at weight 500 — the injected web CSS's `.tag { font-weight: 500 }`
-            if !styled, size > 0 { piece.font = .rzFace(size * 0.92, weight: .medium) }
+            // full body size (Roam's .rm-page-ref--tag has no downscale) at weight 500
+            // (the injected web CSS's `.tag { font-weight: 500 }`)
+            if !styled, size > 0 { piece.font = .rzFace(size, weight: .medium) }
         }
         #endif
         return piece

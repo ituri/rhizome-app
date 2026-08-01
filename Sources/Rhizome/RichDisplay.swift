@@ -86,10 +86,10 @@ enum RichDisplay {
         if p.code || baseCode { fmt += "c" }
         if p.bold || baseBold { fmt += "b" }
         if p.italic { fmt += "i" }
-        // the pill's 0.92em only applies to an unstyled tag, matching the SwiftUI renderer;
-        // an unstyled tag also gets weight 500 (the injected web CSS's `.tag { font-weight: 500 }`)
+        // a tag renders at full body size (Roam's .rm-page-ref--tag has no downscale); an
+        // unstyled tag gets weight 500 (the injected web CSS's `.tag { font-weight: 500 }`)
         let styled = p.bold || p.italic || p.code
-        let fontSize = (pilled && !styled) ? size * 0.92 : size
+        let fontSize = size
         var font = face(fontSize, fmt)
         if pilled, !styled {
             let d = font.fontDescriptor.addingAttributes(
