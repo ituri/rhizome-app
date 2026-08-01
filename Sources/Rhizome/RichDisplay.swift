@@ -225,7 +225,7 @@ final class PillTextView: UITextView {
             linkRects += segments(range).map { ($0.frame.insetBy(dx: -3, dy: -3), url) }
         }
         let path = UIBezierPath()
-        for r in pills { path.append(UIBezierPath(roundedRect: r, cornerRadius: min(7, r.height / 2))) }
+        for r in pills { path.append(UIBezierPath(roundedRect: r, cornerRadius: r.height / 2)) }   // full capsule
         pillLayer.path = path.isEmpty ? nil : path.cgPath
         let refPath = UIBezierPath()
         for r in refBoxes { refPath.append(UIBezierPath(roundedRect: r, cornerRadius: 4)) }   // web 4px
