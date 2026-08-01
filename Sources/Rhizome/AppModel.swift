@@ -494,17 +494,54 @@ final class AppModel {
     }
 
     /// Commit the buffer into the doc + send it, if it changed.
+    // Block-format markers revealed while editing (view-only — never stored), matching the web:
+    // focusing a h1/h2/h3/quote line shows "# / ## / ### / > "; the format follows the marker
+    // once editing leaves the line, and a deleted marker demotes to a plain bullet.
+    private static let blockMarks: [String: String] = ["h1": "# ", "h2": "## ", "h3": "### ", "quote": "> "]
+    private static let markFormats: [String: String] = ["#": "h1", "##": "h2", "###": "h3", ">": "quote"]
+    private var revealedBlockMark = false
+
+    /// A leading block marker split off the edit source, else (nil, unchanged).
+    private func splitBlockMark(_ s: String) -> (fmt: String?, rest: String) {
+        guard let sp = s.firstIndex(of: " "), sp != s.startIndex else { return (nil, s) }
+        guard let fmt = Self.markFormats[String(s[..<sp])] else { return (nil, s) }
+        return (fmt, String(s[s.index(after: sp)...]))
+    }
+
+    /// The format follows the marker when editing leaves the line. Runs BEFORE flushCurrent.
+    private func finalizeBlockMark() {
+        defer { revealedBlockMark = false }
+        guard let id = editingID, let node = doc?.nodes[id] else { return }
+        let want = splitBlockMark(editText).fmt
+        if let want, want != node.format {
+            doc?.nodes[id]?.format = want
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["format": .string(want)])])
+        } else if want == nil, revealedBlockMark, let cur = node.format, Self.blockMarks[cur] != nil {
+            // the user deleted the revealed marker → back to a plain bullet
+            doc?.nodes[id]?.format = nil
+            send([Op(kind: "update", node: id, hlc: clock.stamp(), unset: ["format"])])
+        }
+    }
+
     func flushCurrent() {
         flushTask?.cancel()
-        guard let id = editingID, editText != (doc?.nodes[id]?.text ?? "") else { return }
-        doc?.nodes[id]?.text = editText
-        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(editText)])])
+        guard let id = editingID else { return }
+        let stored = splitBlockMark(editText).rest   // the marker is view-only, never stored
+        guard stored != (doc?.nodes[id]?.text ?? "") else { return }
+        doc?.nodes[id]?.text = stored
+        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(stored)])])
     }
 
     func beginEdit(_ id: String) {
-        if editingID != id { flushCurrent() }
+        if editingID != id { finalizeBlockMark(); flushCurrent() }
         editingID = id
-        editText = doc?.nodes[id]?.text ?? ""
+        var text = doc?.nodes[id]?.text ?? ""
+        revealedBlockMark = false
+        if let fmt = doc?.nodes[id]?.format, let mark = Self.blockMarks[fmt] {
+            if !text.hasPrefix(mark) { text = mark + text }
+            revealedBlockMark = true
+        }
+        editText = text
         clearLinkSuggestions()
         locationProvider.start()   // warm up location so the geo button is ready/instant
     }
@@ -514,6 +551,7 @@ final class AppModel {
     /// `editingID` has already moved on (see the guard in the editor delegate).
     func returnFromEditor() {
         guard let id = editingID else { return }
+        finalizeBlockMark()
         flushCurrent()
         guard let new = insertSibling(after: id) else { editingID = nil; return }
         editingID = new
@@ -561,6 +599,7 @@ final class AppModel {
         if let editorResign {
             editorResign()
         } else {
+            finalizeBlockMark()
             flushCurrent()
             editingID = nil
             clearLinkSuggestions()
@@ -569,6 +608,7 @@ final class AppModel {
 
     /// The edited field lost focus (keyboard dismissed / tapped elsewhere).
     func blurred() {
+        finalizeBlockMark()
         flushCurrent()
         editingID = nil
         clearLinkSuggestions()
