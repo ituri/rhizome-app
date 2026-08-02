@@ -9,5 +9,11 @@
     <array>
         <string>group.org.syslinx.rhizome</string>
     </array>
+    <!-- Same shared Keychain group as the app/Share Extension, so the widget can read the
+         session cookie and refresh its snapshot from the server in the background. -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)org.syslinx.rhizome</string>
+    </array>
 </dict>
 </plist>

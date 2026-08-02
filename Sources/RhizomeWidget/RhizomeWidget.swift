@@ -1,21 +1,15 @@
 import WidgetKit
 import SwiftUI
+import RhizomeKit
 
-// Rhizome's palette, hardcoded so the widget target stays self-contained (no RhizomeKit).
+// Rhizome's palette, hardcoded (the widget shares RhizomeKit for the session, not the theme).
 private let rzClay = Color(red: 0.76, green: 0.34, blue: 0.23)   // #c2563a
 private let rzPaper = Color(red: 0.957, green: 0.945, blue: 0.918) // #f4f1ea
 private let rzInk = Color(red: 0.20, green: 0.19, blue: 0.17)
 
-private let appGroupID = "group.org.syslinx.rhizome"
-
 /// Today's capture bullet + a preview of its items (newest first), from the App Group.
 private func loadSnapshot() -> (bullet: String, items: [String], total: Int) {
-    let d = UserDefaults(suiteName: appGroupID)
-    let raw = d?.string(forKey: "captureBullet")?.trimmingCharacters(in: .whitespaces) ?? ""
-    let bullet = raw.isEmpty ? "Inbox" : raw
-    let items = d?.stringArray(forKey: "widgetItems") ?? []
-    let total = d?.integer(forKey: "widgetTotal") ?? items.count
-    return (bullet, items, total)
+    (AppGroup.captureBullet, AppGroup.widgetItems, AppGroup.widgetTotal)
 }
 
 struct CaptureEntry: TimelineEntry {
@@ -36,9 +30,61 @@ struct CaptureProvider: TimelineProvider {
     func getSnapshot(in context: Context, completion: @escaping (CaptureEntry) -> Void) {
         completion(entry())
     }
-    func getTimeline(in context: Context, completion: @escaping (Timeline<CaptureEntry>) -> Void) {
-        // the app reloads us via WidgetCenter on every change; refresh in ~30 min as a fallback
-        completion(Timeline(entries: [entry()], policy: .after(Date().addingTimeInterval(1800))))
+    func getTimeline(in context: Context, completion: @escaping @Sendable (Timeline<CaptureEntry>) -> Void) {
+        // Each timeline refresh fetches today's items straight from the server (shared session),
+        // so the widget stays current WITHOUT the app running — falling back to the App Group
+        // snapshot the app last published (offline, signed out, locked keychain after reboot).
+        Task {
+            let e = await Self.fetchedEntry() ?? entry()
+            completion(Timeline(entries: [e], policy: .after(Date().addingTimeInterval(1800))))
+        }
+    }
+
+    /// Today's capture-bullet items live from `/api/v1/journal/today?depth=6` — mirrors the
+    /// app's refreshWidgetSnapshot() flattening ("<depth>\t<text>", newest entry first, cap 8)
+    /// and republishes the snapshot so the next fallback render matches.
+    private static func fetchedEntry() async -> CaptureEntry? {
+        guard let base = AppGroup.serverURL, let cookie = AppGroup.sessionCookie,
+              var comps = URLComponents(url: base.appendingPathComponent("api/v1/journal/today"),
+                                        resolvingAgainstBaseURL: false) else { return nil }
+        comps.queryItems = [URLQueryItem(name: "depth", value: "6")]
+        guard let url = comps.url else { return nil }
+        var req = URLRequest(url: url, timeoutInterval: 15)
+        req.setValue("rz_session=\(cookie)", forHTTPHeaderField: "Cookie")
+        struct WNode: Decodable { let plain: String?; let children: [WNode]? }
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let day = try? JSONDecoder().decode(WNode.self, from: data) else { return nil }
+
+        let bullet = AppGroup.captureBullet
+        let want = bullet.trimmingCharacters(in: .whitespaces).lowercased()
+        guard let target = (day.children ?? []).first(where: {
+            ($0.plain ?? "").trimmingCharacters(in: .whitespaces).lowercased() == want
+        }) else {
+            // no capture bullet under today yet → genuinely empty (not an error)
+            AppGroup.setWidgetItems([]); AppGroup.setWidgetTotal(0)
+            return CaptureEntry(date: .now, bullet: bullet, items: [], total: 0)
+        }
+        var items: [String] = []
+        let entries = target.children ?? []
+        let limit = 8
+        func collect(_ n: WNode, _ depth: Int) {
+            guard items.count < limit else { return }
+            let t = (n.plain ?? "").trimmingCharacters(in: .whitespaces)
+            let childDepth: Int
+            if t.isEmpty { childDepth = depth } else { items.append("\(depth)\t\(t)"); childDepth = depth + 1 }
+            for c in n.children ?? [] {
+                if items.count >= limit { break }
+                collect(c, childDepth)
+            }
+        }
+        for entry in entries.reversed() {   // newest first
+            if items.count >= limit { break }
+            collect(entry, 0)
+        }
+        AppGroup.setWidgetItems(items)
+        AppGroup.setWidgetTotal(entries.count)
+        return CaptureEntry(date: .now, bullet: bullet, items: items, total: entries.count)
     }
 }
 

@@ -903,6 +903,20 @@ final class AppModel {
             }
             result += ns.substring(from: last); out = result
         }
+        // bare SOTA summit references (LA/FM-178) autolink to their sotl.as page — web parity.
+        // Skipped inside existing links/code (next closing tag would be </a>/</code>) and inside
+        // URLs/attributes (preceded by / " = or a word character).
+        if let re = try? NSRegularExpression(pattern: #"(?<![\w/"=-])([A-Z0-9]{1,3}/[A-Z]{2}-\d{3})(?![\w-])(?![^<]*</(?:a|code)>)"#) {
+            let ns = out as NSString
+            var result = ""; var last = 0
+            for m in re.matches(in: out, range: NSRange(location: 0, length: ns.length)) {
+                result += ns.substring(with: NSRange(location: last, length: m.range.location - last))
+                let ref = ns.substring(with: m.range(at: 1))
+                result += "<a href=\"https://sotl.as/summits/\(ref)\" rel=\"noopener\">\(ref)</a>"
+                last = m.range.location + m.range.length
+            }
+            result += ns.substring(from: last); out = result
+        }
         // inline formatting → HTML tags. Order matters: code first (backticks protect their
         // content), then bold before italic so `**` isn't consumed by the single-`*` rule.
         func replace(_ pattern: String, _ template: String) {
@@ -1055,6 +1069,15 @@ final class AppModel {
         guard let n = doc?.nodes[id] else { return nil }
         if let first = n.children?.first, let c = parseCoords(doc?.nodes[first]?.text ?? "") { return c }
         return parseCoords(n.text ?? "")
+    }
+
+    /// The first SOTA summit reference a bullet's text links to (sotl.as link), else nil.
+    static func sotaRef(in text: String) -> String? {
+        guard text.contains("sotl.as/summits/") else { return nil }
+        let ns = text as NSString
+        guard let re = try? NSRegularExpression(pattern: #"https://sotl\.as/summits/([A-Z0-9]{1,3}/[A-Z]{2}-\d{3})"#),
+              let m = re.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        return ns.substring(with: m.range(at: 1))
     }
 
     /// The coordinate of the first location page a bullet's text links to, else nil.

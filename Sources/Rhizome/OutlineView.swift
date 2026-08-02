@@ -216,6 +216,8 @@ struct OutlineRow: View {
                 }
                 if let c = model.linkedCoords(in: node?.text ?? "") {
                     GeoMapView(lat: c.lat, lon: c.lon)   // mini-map under a bullet referencing a place
+                } else if let ref = AppModel.sotaRef(in: node?.text ?? "") {
+                    SotaMapView(ref: ref)   // SOTA summit link → topo mini map (web parity)
                 }
                 if model.editingID != id, (node?.text ?? "").contains("{{table}}") {
                     TableBlockView(rootID: id)   // web parity: children rendered as a Roam table

@@ -39,9 +39,11 @@ let package = Package(
             name: "RhizomeShare",
             dependencies: ["RhizomeKit"]
         ),
-        // Self-contained (no RhizomeKit) so the widget stays lean — it only deep-links home.
+        // Uses RhizomeKit for the shared session (App Group + Keychain) so the medium widget
+        // can refresh today's capture-bullet items from the server in the background.
         .target(
-            name: "RhizomeWidget"
+            name: "RhizomeWidget",
+            dependencies: ["RhizomeKit"]
         ),
     ]
 )
