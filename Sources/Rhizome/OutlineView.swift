@@ -217,6 +217,9 @@ struct OutlineRow: View {
                 if let c = model.linkedCoords(in: node?.text ?? "") {
                     GeoMapView(lat: c.lat, lon: c.lon)   // mini-map under a bullet referencing a place
                 }
+                if model.editingID != id, (node?.text ?? "").contains("{{table}}") {
+                    TableBlockView(rootID: id)   // web parity: children rendered as a Roam table
+                }
             }
         }
         .fullScreenCover(item: $viewer) { v in ImageViewer(url: v.url) }
