@@ -1670,8 +1670,39 @@ final class AppModel {
         let monthID = childCalNode(of: yearID, cal: "month", match: { $0.cm == month - 1 }, fallbackText: monthName)
             ?? insertCalNode(parent: yearID, cal: "month", text: monthName, cm: month - 1, cy: year)
         let dayID = insertCalNode(parent: monthID, cal: "day", text: title, cd: cd)
-        _ = insertChild(of: dayID)   // an empty bullet so the day is immediately writable
+        // the #daily-template bullet's children seed the fresh day (web/server parity);
+        // without a template, the plain empty starter bullet keeps the day writable
+        if !applyDailyTemplate(to: dayID) { _ = insertChild(of: dayID) }
         ensuredDay = cd
+    }
+
+    /// Deep-copy the children of the bullet tagged `#daily-template` into a fresh journal day.
+    /// Returns false when no template exists (caller falls back to the empty starter bullet).
+    private func applyDailyTemplate(to dayID: String) -> Bool {
+        guard let doc,
+              let tpl = doc.nodes.first(where: { RichText.plain($0.value.text ?? "", doc: doc).contains("#daily-template") })?.key,
+              tpl != dayID,
+              let kids = doc.nodes[tpl]?.children, !kids.isEmpty else { return false }
+        for child in kids { copySubtree(child, into: dayID) }
+        return true
+    }
+
+    /// Recursive copy with per-node insert ops (parents before children, like the web's
+    /// cloneSubtree) — text, note, format and done travel; ids are fresh.
+    private func copySubtree(_ srcID: String, into parent: String) {
+        guard let src = doc?.nodes[srcID] else { return }
+        let id = clock.newID()
+        doc?.nodes[id] = RNode(text: src.text, note: src.note, children: [], done: src.done, format: src.format)
+        if doc?.nodes[parent]?.children == nil { doc?.nodes[parent]?.children = [] }
+        let ord = doc?.nodes[parent]?.children?.count ?? 0
+        doc?.nodes[parent]?.children?.append(id)
+        parentMap[id] = parent
+        var data: [String: JSONValue] = ["text": .string(src.text ?? "")]
+        if let note = src.note { data["note"] = .string(note) }
+        if let format = src.format { data["format"] = .string(format) }
+        if src.done == true { data["done"] = .bool(true) }
+        send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: parent, ord: ord, data: data)])
+        for child in src.children ?? [] { copySubtree(child, into: id) }
     }
 
     private func childCalNode(of parent: String, cal: String, match: (RNode) -> Bool, fallbackText: String) -> String? {
