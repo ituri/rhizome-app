@@ -56,6 +56,7 @@ private struct OSMMapView: UIViewRepresentable {
         map.isUserInteractionEnabled = false
 
         applyOverlay(map, context: context)
+        context.coordinator.summit = topo   // only SOTA maps set topo → peak marker
         let coord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
         map.setRegion(MKCoordinateRegion(center: coord, latitudinalMeters: meters, longitudinalMeters: meters), animated: false)
         let pin = MKPointAnnotation()
@@ -86,6 +87,7 @@ private struct OSMMapView: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate {
         var template = ""
+        var summit = false
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let tile = overlay as? MKTileOverlay { return MKTileOverlayRenderer(tileOverlay: tile) }
@@ -94,11 +96,11 @@ private struct OSMMapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             guard !(annotation is MKUserLocation) else { return nil }
-            let id = "pin"
+            let id = summit ? "peak" : "pin"
             let v = mapView.dequeueReusableAnnotationView(withIdentifier: id)
                 ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
             v.annotation = annotation
-            v.image = Self.pinImage
+            v.image = summit ? Self.peakImage : Self.pinImage
             v.isUserInteractionEnabled = false
             return v
         }
@@ -109,6 +111,19 @@ private struct OSMMapView: UIViewRepresentable {
                 let path = UIBezierPath(ovalIn: CGRect(x: 1, y: 1, width: 14, height: 14))
                 rzAccentUIColor(RZTheme.accent).setFill(); path.fill()
                 UIColor.white.setStroke(); path.lineWidth = 2; path.stroke()
+            }
+        }()
+
+        // a summit gets a peak triangle instead of the dot (matches the web's SOTA marker)
+        static let peakImage: UIImage = {
+            UIGraphicsImageRenderer(size: CGSize(width: 22, height: 20)).image { _ in
+                let path = UIBezierPath()
+                path.move(to: CGPoint(x: 11, y: 2))
+                path.addLine(to: CGPoint(x: 21, y: 18))
+                path.addLine(to: CGPoint(x: 1, y: 18))
+                path.close()
+                rzAccentUIColor(RZTheme.accent).setFill(); path.fill()
+                UIColor.white.setStroke(); path.lineWidth = 2; path.lineJoinStyle = .round; path.stroke()
             }
         }()
     }
