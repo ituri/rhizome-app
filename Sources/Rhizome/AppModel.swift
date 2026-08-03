@@ -1064,9 +1064,17 @@ final class AppModel {
         return (lat, lon)
     }
 
-    /// A location page's coordinate — from its first bullet, else its own title.
+    /// A location page's coordinate — a "Coordinates:: lat, lon" attribute child wins
+    /// (roam-atlas convention, what the web writes now), then the legacy bare-coords
+    /// first bullet, then the title itself.
     func pageCoords(_ id: String) -> (lat: Double, lon: Double)? {
         guard let n = doc?.nodes[id] else { return nil }
+        for c in n.children ?? [] {
+            let plain = RichText.plain(doc?.nodes[c]?.text ?? "", doc: doc)
+            if plain.lowercased().hasPrefix("coordinates::"), let coord = parseCoords(String(plain.dropFirst(13))) {
+                return coord
+            }
+        }
         if let first = n.children?.first, let c = parseCoords(doc?.nodes[first]?.text ?? "") { return c }
         return parseCoords(n.text ?? "")
     }
