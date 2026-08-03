@@ -1122,7 +1122,8 @@ final class AppModel {
         if doc?.nodes[pageID]?.geo == "raw" { return }   // user chose coordinates only — never retitle
         let address = (try? await api.reverseGeocode(lat: lat, lon: lon)) ?? ""
         guard !address.isEmpty, parseCoords(doc?.nodes[pageID]?.text ?? "") != nil else { return }
-        let coordsText = String(format: "%.5f, %.5f", lat, lon)
+        // written as the unified Location:: attribute (what the web writes and reads first)
+        let coordsText = String(format: "Location:: %.5f, %.5f", lat, lon)
         let first = doc?.nodes[pageID]?.children?.first
         if first.flatMap({ parseCoords(doc?.nodes[$0]?.text ?? "") }) == nil {
             let newID = clock.newID()
