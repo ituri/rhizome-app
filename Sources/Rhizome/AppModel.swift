@@ -1070,13 +1070,29 @@ final class AppModel {
     func pageCoords(_ id: String) -> (lat: Double, lon: Double)? {
         guard let n = doc?.nodes[id] else { return nil }
         for c in n.children ?? [] {
-            let plain = RichText.plain(doc?.nodes[c]?.text ?? "", doc: doc)
-            if plain.lowercased().hasPrefix("coordinates::"), let coord = parseCoords(String(plain.dropFirst(13))) {
+            let plain = RichText.plain(doc?.nodes[c]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+            let lower = plain.lowercased()
+            if lower.hasPrefix("coordinates::"), let coord = parseCoords(String(plain.dropFirst(13))) {
                 return coord
             }
+            // Location:: is polymorphic — a value that IS a bare coordinate pair counts directly
+            // (anchored match, so an address merely containing numbers doesn't false-positive)
+            if lower.hasPrefix("location::") {
+                let v = String(plain.dropFirst(10)).trimmingCharacters(in: .whitespaces)
+                if v.range(of: #"^-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+$"#, options: .regularExpression) != nil,
+                   let coord = parseCoords(v) {
+                    return coord
+                }
+            }
         }
-        if let first = n.children?.first, let c = parseCoords(doc?.nodes[first]?.text ?? "") { return c }
-        return parseCoords(n.text ?? "")
+        // legacy fallbacks are anchored: a first bullet / title that IS a bare coordinate pair
+        func bare(_ text: String) -> (lat: Double, lon: Double)? {
+            let plain = RichText.plain(text, doc: doc).trimmingCharacters(in: .whitespaces)
+            guard plain.range(of: #"^-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+$"#, options: .regularExpression) != nil else { return nil }
+            return parseCoords(plain)
+        }
+        if let first = n.children?.first, let c = bare(doc?.nodes[first]?.text ?? "") { return c }
+        return bare(n.text ?? "")
     }
 
     /// The first SOTA summit reference a bullet's text links to (sotl.as link), else nil.
