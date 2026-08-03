@@ -14,6 +14,9 @@ public struct RichPiece: Sendable {
     public var pill = false
     /// A `((block reference))` — the Roam skin renders it as plain underlined text.
     public var blockRef = false
+    /// The key of a leading `Key:: value` attribute — drawn bold and tappable (web parity:
+    /// one visible colon, the second is consumed).
+    public var attrKey = false
     /// A synthetic faint `[[` / `]]` the Roam skin draws around an internal link. Not part of the
     /// semantic text — `RichText.plain` skips these.
     public var bracket = false
@@ -78,7 +81,9 @@ public enum RichText {
     /// Markup stripped to plain text (for titles etc.). Semantic text only: the Roam skin's
     /// synthetic `[[` `]]` brackets and pill padding never appear here.
     public static func plain(_ raw: String, doc: RDoc? = nil) -> String {
-        pieces(raw, doc: doc).lazy.filter { !$0.bracket }.map(\.text).joined()
+        // an attribute key renders with ONE colon but its SOURCE has two — restore the second,
+        // or every `Key:: value` consumer (pageCoords, attribute matching, search) would break
+        pieces(raw, doc: doc).lazy.filter { !$0.bracket }.map { $0.attrKey ? $0.text + ":" : $0.text }.joined()
     }
 
     /// Whether a link points into the graph (`rhizome://n/<id>`) — the web's `a[href^="#/n/"]`.
@@ -104,9 +109,35 @@ public enum RichText {
 
     /// Parse `raw` into styled pieces. Skin-dependent *structure* (the Roam brackets around an
     /// internal link) is decided here; colours, fonts and pill chrome are the renderers' job.
+    /// A leading `Key:: ` attribute, if the raw text starts with one (mirrors the web's
+    /// parseAttribute + decorate: the key renders bold and tappable, and only ONE colon shows).
+    static func leadingAttrKey(_ raw: String) -> String? {
+        // must sit at the very start, before any markup
+        guard let re = try? NSRegularExpression(pattern: #"^([\p{L}\p{N}][\p{L}\p{N} _\-/]*?)::(\s|$)"#),
+              let m = re.firstMatch(in: raw, range: NSRange(location: 0, length: (raw as NSString).length))
+        else { return nil }
+        return (raw as NSString).substring(with: m.range(at: 1))
+    }
+
     public static func pieces(_ raw: String, doc: RDoc? = nil) -> [RichPiece] {
         var out: [RichPiece] = []
         var stack = [Style()]
+
+        // "Key:: value" → a bold, tappable key with a single colon, then the value as usual
+        var raw = raw
+        if let key = leadingAttrKey(raw) {
+            var s = Style()
+            if let enc = key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
+                s.link = URL(string: "rhizome://attr/\(enc)")
+            }
+            var p = RichPiece(text: key)
+            p.attrKey = true
+            p.bold = true
+            p.link = s.link
+            out.append(p)
+            raw = String(raw.dropFirst(key.count + 1))   // drop the key + ONE of the two colons
+        }
+
         let chars = Array(raw)
         var i = 0
 
@@ -323,6 +354,8 @@ public enum RichText {
         #if canImport(SwiftUI)
         if let tc = p.textColor {
             piece.foregroundColor = tc.color               // explicit text colour wins
+        } else if p.attrKey {
+            // an attribute key is bold ink, not accent (web: `.attr-key { font-weight: 700 }`)
         } else if p.accent || p.link != nil {
             // a link into the graph takes the skin's link colour (Roam's blue); tags, web links and
             // the rest stay on the accent
@@ -372,6 +405,15 @@ public enum RichText {
     /// The tag/page name from an internal `rhizome://tag/<name>` link (percent-decoded), else nil.
     public static func tagName(from url: URL) -> String? {
         guard url.scheme == "rhizome", url.host == "tag" else { return nil }
+        let raw = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
+        let name = raw.removingPercentEncoding ?? raw
+        return name.isEmpty ? nil : name
+    }
+
+    /// The attribute key behind a tapped `rhizome://attr/<Key>` link (web parity: tapping a
+    /// key opens that attribute's page, where its references gather).
+    public static func attrName(from url: URL) -> String? {
+        guard url.scheme == "rhizome", url.host == "attr" else { return nil }
         let raw = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
         let name = raw.removingPercentEncoding ?? raw
         return name.isEmpty ? nil : name

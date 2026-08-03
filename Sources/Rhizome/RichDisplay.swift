@@ -102,6 +102,8 @@ enum RichDisplay {
         // colour: explicit text colour > graph-link blue > accent > surrounding ink
         if let tc = p.textColor {
             attrs[.foregroundColor] = tc.uiColor
+        } else if p.attrKey {
+            attrs[.foregroundColor] = baseColor   // web: bold ink at rest, accent only on hover
         } else if p.accent || p.link != nil {
             attrs[.foregroundColor] = RichText.isNodeLink(p.link) ? RichEditor.link : RichEditor.accent
         } else {

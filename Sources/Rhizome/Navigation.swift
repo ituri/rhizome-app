@@ -41,6 +41,10 @@ extension View {
                 path.wrappedValue.append(id)   // #tag → its page (created on the fly if needed)
                 return .handled
             }
+            if let key = RichText.attrName(from: url), let id = model.openTag(key) {
+                path.wrappedValue.append(id)   // Key:: → the attribute's page (web parity)
+                return .handled
+            }
             return .systemAction
         })
     }

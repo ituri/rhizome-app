@@ -163,8 +163,15 @@ struct SotaMapView: View {
     @State private var lon: Double?
 
     var body: some View {
-        Group {
-            if let lat, let lon { GeoMapView(lat: lat, lon: lon, topo: true) }
+        // NOTE: a `Group { if let … }` collapses to EmptyView while the lookup is pending, and
+        // SwiftUI may never run a .task attached to EmptyView — the map would then never load
+        // (no task → no coordinates → no view). Always render something real.
+        VStack(spacing: 0) {
+            if let lat, let lon {
+                GeoMapView(lat: lat, lon: lon, topo: true)
+            } else {
+                Color.clear.frame(height: 0.5)
+            }
         }
         .task(id: ref) {
             if let c = await SotaLookup.coords(for: ref) {   // cache-first internally
