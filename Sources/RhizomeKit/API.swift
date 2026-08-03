@@ -364,6 +364,24 @@ public struct RhizomeAPI: Sendable {
         return (try? JSONDecoder().decode(Result.self, from: data).ids) ?? []
     }
 
+    /// Meaning-based search over the server's local embedding index → node ids in
+    /// relevance order. Throws `APIError(status: 501)` when the server has no embedder
+    /// configured, so the UI can say so instead of showing "no results".
+    public func semanticSearch(graphID: String, query: String, limit: Int = 40) async throws -> [String] {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/g/\(graphID)/semantic"),
+            resolvingAgainstBaseURL: false
+        )!
+        comps.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        let data = try await send(URLRequest(url: comps.url!))
+        struct Hit: Decodable { let id: String }
+        struct Result: Decodable { let results: [Hit] }
+        return (try? JSONDecoder().decode(Result.self, from: data).results.map(\.id)) ?? []
+    }
+
     /// Quick-capture a line into today's journal Inbox (the server creates the day
     /// node if needed). Uses the current session.
     public func capture(_ text: String, deviceName: String = "", bullet: String = "") async throws {

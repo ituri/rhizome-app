@@ -5,24 +5,47 @@ import RhizomeKit
 /// tab. Each hit shows the matched node with a breadcrumb; tapping opens it in
 /// context.
 struct SearchView: View {
+    /// Words (server FTS) vs meaning (the server's local embedding index — the web's `~` mode).
+    private enum Mode: String, CaseIterable { case text = "Words", meaning = "Meaning" }
+
     @Environment(AppModel.self) private var model
     @State private var query = ""
+    @State private var mode: Mode = .text
     @State private var results: [String] = []
+    @State private var notice: String?      // e.g. the server has no embedder configured
     @State private var path: [String] = []
 
     /// Real pages first (they're the primary hit), then the bullets that mention them —
-    /// keeping the server's relevance order within each group.
+    /// keeping the server's relevance order within each group. Meaning-search results are
+    /// already ranked by similarity, so they keep the server's order untouched.
     private var ordered: [String] {
-        results.filter { model.isPage($0) } + results.filter { !model.isPage($0) }
+        mode == .meaning ? results
+            : results.filter { model.isPage($0) } + results.filter { !model.isPage($0) }
     }
 
     var body: some View {
         NavigationStack(path: $path) {
-            List(ordered, id: \.self) { id in row(id) }
+            List {
+                Picker("Search mode", selection: $mode) {
+                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.rzPaper)
+                ForEach(ordered, id: \.self) { id in row(id) }
+            }
             .outlineList()
             .overlay {
-                if query.isEmpty {
-                    ContentUnavailableView("Search your graph", systemImage: "magnifyingglass")
+                if let notice {
+                    ContentUnavailableView(notice, systemImage: "exclamationmark.triangle")
+                } else if query.isEmpty {
+                    ContentUnavailableView(
+                        mode == .meaning ? "Search by meaning" : "Search your graph",
+                        systemImage: mode == .meaning ? "brain" : "magnifyingglass",
+                        description: Text(mode == .meaning
+                            ? "Ask a question — related notes surface even when they use different words."
+                            : "Find notes by the words they contain.")
+                    )
                 } else if results.isEmpty {
                     ContentUnavailableView.search(text: query)
                 }
@@ -31,12 +54,22 @@ struct SearchView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { PageView(pageID: $0) }
         }
-        .searchable(text: $query, prompt: "Search notes")
+        .searchable(text: $query, prompt: mode == .meaning ? "Ask about your notes" : "Search notes")
         .handleNodeLinks(path: $path, model: model)
-        .task(id: query) {
+        .task(id: "\(mode.rawValue)\u{1}\(query)") {
             try? await Task.sleep(nanoseconds: 250_000_000)   // debounce
             guard !Task.isCancelled else { return }
-            results = await model.search(query)
+            notice = nil
+            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                results = []
+            } else if mode == .meaning {
+                let hit = await model.semanticSearch(query)
+                guard !Task.isCancelled else { return }
+                results = hit.ids
+                notice = hit.unavailable
+            } else {
+                results = await model.search(query)
+            }
         }
     }
 

@@ -1191,6 +1191,20 @@ final class AppModel {
         return (try? await api.search(graphID: graphID, query: query)) ?? []
     }
 
+    /// Meaning-based search (web parity: the `~` mode). Returns the ids in relevance
+    /// order plus, when the server has no embedder, a message for the UI to show.
+    func semanticSearch(_ query: String) async -> (ids: [String], unavailable: String?) {
+        guard let api, let graphID = activeGraph?.id,
+              !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return ([], nil) }
+        do {
+            return (try await api.semanticSearch(graphID: graphID, query: query), nil)
+        } catch let e as RhizomeAPI.APIError where e.status == 501 {
+            return ([], "Semantic search is not set up on this server.")
+        } catch {
+            return ([], "Semantic search failed: \(error.localizedDescription)")
+        }
+    }
+
     /// Node ids whose text links to `pageID` (Roam-style backlinks). Links are
     /// stored as `<a href="#/n/<id>">…</a>`.
     func linkedReferences(to pageID: String) -> [String] {
