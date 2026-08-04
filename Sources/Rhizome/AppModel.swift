@@ -1186,6 +1186,7 @@ final class AppModel {
         parentMap = map
         plainCache = plain
         dayCache = nil          // the doc was (re)loaded wholesale → re-derive the days
+        invalidateRefIndex()
     }
 
     func parentOf(_ id: String) -> String? { parentMap[id] }
@@ -1239,19 +1240,96 @@ final class AppModel {
         }
     }
 
+    // MARK: - Reference index
+
+    /// The whole doc's backlinks, derived in ONE pass — see `refIndex`.
+    struct RefIndex {
+        /// target page id → the node ids linking it (`<a href="#/n/…">`), sorted
+        var linked: [String: [String]] = [:]
+        /// journal day id → node ids that name the day in plain text without linking it, sorted
+        var unlinkedDays: [String: [String]] = [:]
+    }
+
+    @ObservationIgnored private var refIndexCache: RefIndex?
+    @ObservationIgnored private var refIndexStale = true
+
+    /// Mark the reference index dirty — called from `send`, the funnel every doc mutation
+    /// passes through, and from `reindex` when the doc is reloaded wholesale.
+    private func invalidateRefIndex() { refIndexStale = true }
+
+    /// Backlinks for every page at once. The Journal asks for the references of EVERY day it
+    /// renders, so deriving them per day meant a full `doc.nodes` pass per day; this is a single
+    /// pass, and each day is then a dictionary lookup.
+    ///
+    /// While a bullet has focus the index is deliberately NOT rebuilt: backlinks needn't track a
+    /// half-typed word, and rebuilding on every debounced flush would put a doc-wide pass back
+    /// on the typing path. `blurred()` clears `editingID`, so the next read refreshes it.
+    var refIndex: RefIndex {
+        if let c = refIndexCache, !refIndexStale || editingID != nil { return c }
+        let built = buildRefIndex()
+        refIndexCache = built
+        refIndexStale = editingID != nil    // built mid-edit → still refresh once the caret leaves
+        return built
+    }
+
+    /// Journal day titles are rigidly shaped ("August 4th, 2026"), so one regex finds mentions of
+    /// ANY day — that's what makes the unlinked pass doc-wide instead of once per day.
+    private static let dayTitleRE = try? NSRegularExpression(
+        pattern: #"(?:january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(?:st|nd|rd|th), \d{4}"#
+    )
+    private static let hrefRE = try? NSRegularExpression(pattern: "#/n/([A-Za-z0-9_-]+)")
+
+    private func buildRefIndex() -> RefIndex {
+        guard let doc else { return RefIndex() }
+        var linked: [String: Set<String>] = [:]
+        var unlinked: [String: Set<String>] = [:]
+        // plainCache (and therefore the titles we match against) is lowercased
+        var dayByTitle: [String: String] = [:]
+        for d in journalDays {
+            dayByTitle[d.title.lowercased()] = d.id
+            // a day whose own text was edited away from the canonical label still matches under
+            // the text it actually carries (as long as that is date-shaped)
+            if let own = plainCache[d.id]?.trimmingCharacters(in: .whitespacesAndNewlines), !own.isEmpty {
+                dayByTitle[own] = d.id
+            }
+        }
+
+        for (id, node) in doc.nodes {
+            guard let text = node.text, !text.isEmpty else { continue }
+            var links = Set<String>()
+            if text.contains("#/n/"), let re = Self.hrefRE {
+                let ns = text as NSString
+                re.enumerateMatches(in: text, range: NSRange(location: 0, length: ns.length)) { m, _, _ in
+                    guard let m else { return }
+                    links.insert(ns.substring(with: m.range(at: 1)))
+                }
+                for target in links where target != id { linked[target, default: []].insert(id) }
+            }
+            // unlinked mentions of a journal day: date-shaped text this node doesn't already link
+            guard !dayByTitle.isEmpty, let re = Self.dayTitleRE else { continue }
+            let plain = plainCache[id] ?? RichText.plain(text, doc: doc).lowercased()
+            guard plain.contains(", 20") else { continue }   // cheap prefilter — no year, no title
+            let ns = plain as NSString
+            re.enumerateMatches(in: plain, range: NSRange(location: 0, length: ns.length)) { m, _, _ in
+                guard let m, let day = dayByTitle[ns.substring(with: m.range)],
+                      day != id, !links.contains(day) else { return }
+                unlinked[day, default: []].insert(id)
+            }
+        }
+        return RefIndex(linked: linked.mapValues { $0.sorted() },
+                        unlinkedDays: unlinked.mapValues { $0.sorted() })
+    }
+
     /// Node ids whose text links to `pageID` (Roam-style backlinks). Links are
     /// stored as `<a href="#/n/<id>">…</a>`.
-    func linkedReferences(to pageID: String) -> [String] {
-        guard let doc else { return [] }
-        let needle = "#/n/\(pageID)"
-        return doc.nodes.compactMap { id, node in
-            (id != pageID && (node.text?.contains(needle) ?? false)) ? id : nil
-        }.sorted()
-    }
+    func linkedReferences(to pageID: String) -> [String] { refIndex.linked[pageID] ?? [] }
 
     /// Node ids whose plain text mentions the page's name but don't link to it.
     func unlinkedReferences(to pageID: String) -> [String] {
         guard let doc else { return [] }
+        // journal days come straight out of the index (their titles are date-shaped)
+        if doc.nodes[pageID]?.cal == "day" { return refIndex.unlinkedDays[pageID] ?? [] }
+        // a normal page's name is arbitrary text → still a scan, but only for the page on screen
         let name = (plainCache[pageID] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard name.count >= 3 else { return [] }
         let linkNeedle = "#/n/\(pageID)"
@@ -1917,6 +1995,7 @@ final class AppModel {
         for op in ops where op.kind == "insert" || op.kind == "update" || op.kind == "move" {
             doc?.nodes[op.node]?.m = now
         }
+        invalidateRefIndex()   // every doc mutation funnels through here
         outbox.append(contentsOf: ops)
         persistOutbox()
         drain()

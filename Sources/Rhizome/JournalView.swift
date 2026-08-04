@@ -36,12 +36,12 @@ struct JournalView: View {
                                             .listRowSeparator(.hidden)
                                             .listRowBackground(Color.rzPaper)
                                     }
-                                    // NB: no Linked/Unlinked References here. `Section`'s builder is
-                                    // eager, so rendering them meant two full passes over doc.nodes
-                                    // for EVERY day in the stream on every doc mutation — i.e. after
-                                    // every debounced keystroke, which is what made typing lag.
-                                    // The web shows backlinks only on the zoomed page, so the day's
-                                    // own page view (tap the date) is where they belong.
+                                    // NB: `Section`'s builder is eager, so this runs for EVERY day
+                                    // in the stream, not just the visible ones — it must stay O(1)
+                                    // per day. It is: both lookups go through `AppModel.refIndex`,
+                                    // one doc-wide pass shared by all days, frozen while a bullet
+                                    // has focus. Deriving them per day is what made typing lag.
+                                    referenceListContent(pageID: day.id, model: model)
                                 } header: {
                                     // tapping the date opens the full-page view of that day
                                     NavigationLink(value: day.id) {
