@@ -24,26 +24,38 @@ public enum Journal {
             .sorted { $0.date > $1.date }
     }
 
-    /// "2026-07-16" → Date.
+    /// A Gregorian calendar in the device's (live) time zone — the parsing/labelling calendar.
+    /// Held as a `let` because `days` runs on every Journal re-render: building a `DateFormatter`
+    /// per day node was the single most expensive thing in that path.
+    private static let cal: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.locale = Locale(identifier: "en_US_POSIX")
+        c.timeZone = .autoupdatingCurrent
+        return c
+    }()
+
+    /// English month names — the canonical day title is `en_US_POSIX`, never localized.
+    private static let months = ["January", "February", "March", "April", "May", "June",
+                                 "July", "August", "September", "October", "November", "December"]
+
+    /// "2026-07-16" → Date. Hand-parsed (no `DateFormatter`): strict about the three numeric
+    /// components, so a malformed `cd` still returns nil rather than rolling over.
     static func parseCd(_ cd: String) -> Date? {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f.date(from: cd)
+        let parts = cd.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 3,
+              let y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]),
+              (1...12).contains(m), (1...31).contains(d) else { return nil }
+        return cal.date(from: DateComponents(year: y, month: m, day: d))
     }
 
     /// Date → "July 16th, 2026" (the canonical journal-day title).
     public static func label(for date: Date) -> String {
-        let cal = Calendar.current
-        let day = cal.component(.day, from: date)
-        let year = cal.component(.year, from: date)
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "MMMM"
+        let c = cal.dateComponents([.day, .month, .year], from: date)
+        guard let day = c.day, let month = c.month, let year = c.year, (1...12).contains(month) else { return "" }
         let suffix: String
         if (11...13).contains(day % 100) { suffix = "th" }
         else { switch day % 10 { case 1: suffix = "st"; case 2: suffix = "nd"; case 3: suffix = "rd"; default: suffix = "th" } }
-        return "\(f.string(from: date)) \(day)\(suffix), \(year)"
+        return "\(months[month - 1]) \(day)\(suffix), \(year)"
     }
 
     /// "July 14th, 2026" → a Date (strips the ordinal suffix).

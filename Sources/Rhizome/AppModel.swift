@@ -1185,9 +1185,30 @@ final class AppModel {
         }
         parentMap = map
         plainCache = plain
+        dayCache = nil          // the doc was (re)loaded wholesale → re-derive the days
     }
 
     func parentOf(_ id: String) -> String? { parentMap[id] }
+
+    // MARK: - Journal days (cached)
+
+    /// Derived days, plus the node count they were derived from — see `journalDays`.
+    @ObservationIgnored private var dayCache: (nodeCount: Int, days: [JournalDay])?
+
+    /// The journal's days, newest first. `JournalView.body` re-runs on every `doc` mutation —
+    /// i.e. after every debounced keystroke flush — and re-deriving this means a full pass over
+    /// `doc.nodes` plus a sort, so the result is cached.
+    ///
+    /// The cache key is the node count: editing a bullet's text (the hot path) leaves it alone,
+    /// while creating or deleting any node — which is the only way a day node can appear or
+    /// disappear — changes it and forces a recompute.
+    var journalDays: [JournalDay] {
+        guard let doc else { return [] }
+        if let c = dayCache, c.nodeCount == doc.nodes.count { return c.days }
+        let days = Journal.days(doc)
+        dayCache = (doc.nodes.count, days)
+        return days
+    }
 
     /// Whether `id` is a real page — a top-level page (root's child, not the calendar root)
     /// or a journal day — as opposed to a bullet that merely mentions one.

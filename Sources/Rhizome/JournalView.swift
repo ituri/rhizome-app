@@ -10,16 +10,16 @@ struct JournalView: View {
     @State private var showingSettings = false
     @State private var path: [String] = []
 
-    private func days(_ doc: RDoc) -> [JournalDay] {
+    private var days: [JournalDay] {
         let now = Date()
-        return Journal.days(doc).filter { $0.date <= now }
+        return model.journalDays.filter { $0.date <= now }
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             Group {
                 if let doc = model.doc {
-                    let days = days(doc)
+                    let days = self.days
                     if days.isEmpty {
                         ContentUnavailableView(
                             "No daily notes yet",
@@ -36,7 +36,12 @@ struct JournalView: View {
                                             .listRowSeparator(.hidden)
                                             .listRowBackground(Color.rzPaper)
                                     }
-                                    referenceListContent(pageID: day.id, model: model)
+                                    // NB: no Linked/Unlinked References here. `Section`'s builder is
+                                    // eager, so rendering them meant two full passes over doc.nodes
+                                    // for EVERY day in the stream on every doc mutation — i.e. after
+                                    // every debounced keystroke, which is what made typing lag.
+                                    // The web shows backlinks only on the zoomed page, so the day's
+                                    // own page view (tap the date) is where they belong.
                                 } header: {
                                     // tapping the date opens the full-page view of that day
                                     NavigationLink(value: day.id) {
