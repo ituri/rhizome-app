@@ -14,20 +14,36 @@ struct RefGroup: Identifiable {
 struct ReferenceRow: View {
     @Environment(AppModel.self) private var model
     let id: String
+    /// The page this row is grouped under — the trail is drawn from there down to the block.
+    var pageID: String?
+
+    private var crumbs: [String] { pageID.map { model.refCrumbs(of: id, under: $0) } ?? [] }
 
     var body: some View {
         NavigationLink(value: model.parentOf(id) ?? id) {
-            // non-interactive: the whole row is a NavigationLink to the ref's bullet, so the
-            // display view must not intercept link taps here (unlike outline rows)
-            RichTextDisplay(
-                raw: model.doc?.nodes[id]?.text ?? "", doc: model.doc, size: model.fontSize,
-                baseColor: RichEditor.ink, maxLines: 4, interactive: false
-            )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 10)
-                // web .ref-row: 6px/10px padding, 3px radius under the Roam skin
-                .background(Color.rzTint, in: RoundedRectangle(cornerRadius: model.skin == .roam ? 3 : 4))
+            VStack(alignment: .leading, spacing: 3) {
+                // web .ref-crumbs: the path from the group's page down to this block, so two
+                // identically-worded blocks on one page don't read as one duplicated row
+                if !crumbs.isEmpty {
+                    Text(crumbs.joined(separator: " › "))
+                        .font(.rz(11.5))
+                        .foregroundStyle(Color.rzInkFaint)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .padding(.horizontal, 10)
+                }
+                // non-interactive: the whole row is a NavigationLink to the ref's bullet, so the
+                // display view must not intercept link taps here (unlike outline rows)
+                RichTextDisplay(
+                    raw: model.doc?.nodes[id]?.text ?? "", doc: model.doc, size: model.fontSize,
+                    baseColor: RichEditor.ink, maxLines: 4, interactive: false
+                )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    // web .ref-row: 6px/10px padding, 3px radius under the Roam skin
+                    .background(Color.rzTint, in: RoundedRectangle(cornerRadius: model.skin == .roam ? 3 : 4))
+            }
         }
         .buttonStyle(.plain)
         .listRowBackground(Color.rzPaper)
@@ -72,14 +88,14 @@ func referenceListContent(pageID: String, model: AppModel) -> some View {
         ReferenceHeader(title: "Linked References").refLabelRow(top: 18)
         ForEach(linked) { group in
             RefPageName(name: group.pageName).refLabelRow(top: 8)
-            ForEach(group.refs, id: \.self) { ReferenceRow(id: $0) }
+            ForEach(group.refs, id: \.self) { ReferenceRow(id: $0, pageID: group.pageID) }
         }
     }
     if !unlinked.isEmpty {
         ReferenceHeader(title: "Unlinked References").refLabelRow(top: 18)
         ForEach(unlinked) { group in
             RefPageName(name: group.pageName).refLabelRow(top: 8)
-            ForEach(group.refs, id: \.self) { ReferenceRow(id: $0) }
+            ForEach(group.refs, id: \.self) { ReferenceRow(id: $0, pageID: group.pageID) }
         }
     }
 }

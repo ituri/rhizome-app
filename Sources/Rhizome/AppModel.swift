@@ -1369,6 +1369,25 @@ final class AppModel {
         }
     }
 
+    /// The path from `pageID` down to `id`, exclusive at both ends — the trail shown above a
+    /// reference row (web parity). Empty when the block sits directly under the page, which is
+    /// the common case and needs no trail. Two blocks that read the same on one page (the
+    /// Roadmap's "August 4th, 2026" under both Web and App) are only told apart by this.
+    func refCrumbs(of id: String, under pageID: String) -> [String] {
+        var trail: [String] = []
+        var cur = parentMap[id]
+        var guardN = 0
+        while let node = cur, node != pageID, node != doc?.root, guardN < 20 {
+            let text = RichText.plain(doc?.nodes[node]?.text ?? "", doc: doc)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { trail.append(text.count > 48 ? text.prefix(47) + "…" : text) }
+            cur = parentMap[node]
+            guardN += 1
+        }
+        guard cur == pageID else { return [] }   // not actually under that page → nothing to trace
+        return trail.reversed()
+    }
+
     /// A " › "-joined trail of ancestor texts, for search-result context.
     func breadcrumb(of id: String) -> String {
         var trail: [String] = []
