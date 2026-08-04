@@ -1608,27 +1608,31 @@ final class AppModel {
         move(id, to: grand, ord: index)
     }
 
-    /// Only the FIRST level under a #Log bullet carries a timestamp. A line becomes a
-    /// sub-bullet by being created as a sibling (stamped) and then indented — so a stamped node
-    /// landing under a parent that is NOT a #Log bullet loses the stamp, whichever level it
-    /// came from. (Web parity.)
-    private func dropStampOnMove(_ id: String, to newParent: String) {
-        guard logTimestamp, !isLogBullet(newParent),
-              let raw = doc?.nodes[id]?.text else { return }
+    /// Level 1 under a #Log bullet carries a timestamp, deeper levels don't — so a move
+    /// between levels works both ways: indenting away from #Log drops the stamp, outdenting
+    /// back up to #Log adds one with the current time. (Web parity.)
+    private func syncStampOnMove(_ id: String, to newParent: String) {
+        guard logTimestamp, let raw = doc?.nodes[id]?.text else { return }
         let plain = RichText.plain(raw, doc: doc)
-        guard plain.range(of: #"^\d{2}:\d{2}\s"#, options: .regularExpression) != nil,
-              let re = try? NSRegularExpression(pattern: #"^(\d{2}:\d{2})(\s|&nbsp;)+"#) else { return }
-        let ns = raw as NSString
-        let stripped = re.stringByReplacingMatches(in: raw, range: NSRange(location: 0, length: ns.length), withTemplate: "")
-        guard stripped != raw else { return }
-        doc?.nodes[id]?.text = stripped
-        if editingID == id { editText = stripped; editorReload?() }
-        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(stripped)])])
+        let has = plain.range(of: #"^\d{2}:\d{2}\s"#, options: .regularExpression) != nil
+        let wants = isLogBullet(newParent)
+        guard has != wants else { return }
+        var next = raw
+        if wants {
+            next = Self.escapeHTML(logStamp(for: newParent)) + raw
+        } else if let re = try? NSRegularExpression(pattern: #"^(\d{2}:\d{2})(\s|&nbsp;)+"#) {
+            let ns = raw as NSString
+            next = re.stringByReplacingMatches(in: raw, range: NSRange(location: 0, length: ns.length), withTemplate: "")
+        }
+        guard next != raw else { return }
+        doc?.nodes[id]?.text = next
+        if editingID == id { editText = next; editorReload?() }
+        send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(next)])])
     }
 
     private func move(_ id: String, to newParent: String, ord: Int) {
         guard parentMap[id] != nil, doc?.nodes[newParent] != nil else { return }
-        dropStampOnMove(id, to: newParent)
+        syncStampOnMove(id, to: newParent)
         if let old = parentMap[id] { doc?.nodes[old]?.children?.removeAll { $0 == id } }
         if doc?.nodes[newParent]?.children == nil { doc?.nodes[newParent]?.children = [] }
         let clamped = min(ord, doc?.nodes[newParent]?.children?.count ?? 0)
