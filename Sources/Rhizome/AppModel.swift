@@ -566,7 +566,9 @@ final class AppModel {
         flushCurrent()
         guard let new = insertSibling(after: id) else { editingID = nil; return }
         editingID = new
-        editText = ""
+        // start from the node's own text, not "" — a new bullet under #Log is created WITH its
+        // HH:mm stamp, and blanking the buffer here would wipe it on the next flush
+        editText = doc?.nodes[new]?.text ?? ""
         clearLinkSuggestions()
     }
 

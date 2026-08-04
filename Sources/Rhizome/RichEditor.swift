@@ -375,6 +375,9 @@ struct RichTextEditor: UIViewRepresentable {
             guard !tv.isFirstResponder, model.editText != lastSource else { return }
             lastSource = model.editText
             tv.attributedText = RichEditor.render(model.editText, doc: model.doc)
+            // a row that is about to take focus starts with the caret behind its text — this is
+            // what puts you after the "HH:mm " stamp of a fresh #Log entry, not in front of it
+            tv.selectedRange = NSRange(location: tv.attributedText.length, length: 0)
         }
 
         func textViewDidChange(_ tv: UITextView) {
