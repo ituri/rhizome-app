@@ -17,7 +17,12 @@ public struct RGraph: Codable, Sendable, Identifiable {
 /// Cross-device preferences for the signed-in account (shared web ⇄ iOS).
 public struct RPrefs: Codable, Sendable {
     public var captureTimestamp: Bool?
-    public init(captureTimestamp: Bool? = nil) { self.captureTimestamp = captureTimestamp }
+    /// Stamp new bullets under a #Log bullet with the local time.
+    public var logTimestamp: Bool?
+    public init(captureTimestamp: Bool? = nil, logTimestamp: Bool? = nil) {
+        self.captureTimestamp = captureTimestamp
+        self.logTimestamp = logTimestamp
+    }
 }
 
 public struct RMe: Codable, Sendable {

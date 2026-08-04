@@ -69,6 +69,15 @@ final class AppModel {
         }
     }
 
+    /// Stamp new bullets under a `#Log` bullet with the local time (web parity). Shared
+    /// across devices for the account, like `captureTimestamp`.
+    var logTimestamp: Bool {
+        didSet {
+            UserDefaults.standard.set(logTimestamp, forKey: "logTimestamp")
+            if !applyingRemotePrefs { pushPrefs() }
+        }
+    }
+
     /// The journal bullet quick-capture (and the widget) file notes under — default "Inbox".
     /// Device-local; also mirrored to the App Group so the widget shows the right bullet.
     var captureBullet: String {
@@ -87,12 +96,13 @@ final class AppModel {
         applyingRemotePrefs = true
         defer { applyingRemotePrefs = false }
         if let ts = p.captureTimestamp { captureTimestamp = ts }
+        if let ls = p.logTimestamp { logTimestamp = ls }
     }
 
     /// Mirror the shared preferences up to the server (best-effort).
     private func pushPrefs() {
         guard let api, !isOffline else { return }
-        let prefs = RPrefs(captureTimestamp: captureTimestamp)
+        let prefs = RPrefs(captureTimestamp: captureTimestamp, logTimestamp: logTimestamp)
         Task { try? await api.putPrefs(prefs) }
     }
 
@@ -261,6 +271,7 @@ final class AppModel {
         serverURLString = saved ?? "https://rhizome.syslinx.org"   // prefilled; editable on the sign-in screen
         activeGraphID = UserDefaults.standard.string(forKey: "activeGraphID")
         captureTimestamp = UserDefaults.standard.object(forKey: "captureTimestamp") as? Bool ?? true
+        logTimestamp = UserDefaults.standard.object(forKey: "logTimestamp") as? Bool ?? true
         captureBullet = UserDefaults.standard.string(forKey: "captureBullet") ?? "Inbox"
         deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? UIDevice.current.name
         fontSize = UserDefaults.standard.object(forKey: "fontSize") as? Double ?? Self.defaultFontSize
@@ -1525,14 +1536,30 @@ final class AppModel {
         return insertChild(of: pageID)
     }
 
+    /// Whether a bullet carries the `#Log` tag — its new children get an HH:mm stamp
+    /// (web parity; toggled by the shared `logTimestamp` pref).
+    func isLogBullet(_ id: String?) -> Bool {
+        guard let id, let text = doc?.nodes[id]?.text else { return false }
+        let plain = RichText.plain(text, doc: doc)
+        return plain.range(of: #"(^|[\s(])#log(\b|$)"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// The stamp a new child of `parent` starts with: "HH:mm " under a #Log bullet, else "".
+    func logStamp(for parent: String) -> String {
+        guard logTimestamp, isLogBullet(parent) else { return "" }
+        let p = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        return String(format: "%02d:%02d ", p.hour ?? 0, p.minute ?? 0)
+    }
+
     private func insert(parent: String, ord: Int) -> String {
         let id = clock.newID()
-        doc?.nodes[id] = RNode(text: "", children: [])
+        let text = Self.escapeHTML(logStamp(for: parent))
+        doc?.nodes[id] = RNode(text: text, children: [])
         if doc?.nodes[parent]?.children == nil { doc?.nodes[parent]?.children = [] }
         let clamped = min(ord, doc?.nodes[parent]?.children?.count ?? 0)
         doc?.nodes[parent]?.children?.insert(id, at: clamped)
         parentMap[id] = parent
-        send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: parent, ord: ord, data: ["text": .string("")])])
+        send([Op(kind: "insert", node: id, hlc: clock.stamp(), parent: parent, ord: ord, data: ["text": .string(text)])])
         return id
     }
 

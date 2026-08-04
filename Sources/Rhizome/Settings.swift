@@ -225,6 +225,7 @@ struct BehaviourSettingsView: View {
         Form {
             Section {
                 Toggle("Add timestamp to notes", isOn: $model.captureTimestamp)
+                Toggle("Timestamp #Log entries", isOn: $model.logTimestamp)
                 LabeledContent("Capture bullet") {
                     TextField("Inbox", text: $model.captureBullet)
                         .multilineTextAlignment(.trailing)
