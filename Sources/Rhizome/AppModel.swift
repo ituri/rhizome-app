@@ -90,8 +90,15 @@ final class AppModel {
         }
     }
 
-    /// Apply cross-device preferences fetched from the server (server value wins on load).
+    /// Whether this server has an embedder — the Search tab drops its "Meaning" mode without one,
+    /// rather than offering a mode that can only answer with an error. Servers older than the
+    /// `/api/me` flag report nothing, and keep the old behaviour (offer it, explain on 501).
+    var semanticAvailable = true
+
+    /// Apply cross-device preferences and server capabilities fetched from the server
+    /// (server value wins on load).
     private func applyPrefs(_ me: RMe) {
+        semanticAvailable = me.semantic ?? true
         guard let p = me.prefs else { return }
         applyingRemotePrefs = true
         defer { applyingRemotePrefs = false }
@@ -329,6 +336,7 @@ final class AppModel {
             // offline: resume from the last cached session + doc
             if let me = LocalStore.load(RMe.self, "me.json"), let u = me.user {
                 isOffline = true
+                semanticAvailable = me.semantic ?? true   // last known capability, from the cache
                 await adopt(user: u, graphs: me.graphs ?? [], api: api)
             } else {
                 phase = .signedOut

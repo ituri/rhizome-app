@@ -26,12 +26,16 @@ struct SearchView: View {
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                Picker("Search mode", selection: $mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                // no embedder on this server → no mode to choose, so the picker goes away
+                // entirely instead of offering a mode that can only answer with an error
+                if model.semanticAvailable {
+                    Picker("Search mode", selection: $mode) {
+                        ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.rzPaper)
                 }
-                .pickerStyle(.segmented)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.rzPaper)
                 ForEach(ordered, id: \.self) { id in row(id) }
             }
             .outlineList()
@@ -56,6 +60,8 @@ struct SearchView: View {
         }
         .searchable(text: $query, prompt: mode == .meaning ? "Ask about your notes" : "Search notes")
         .handleNodeLinks(path: $path, model: model)
+        // a server that loses its embedder while the tab sits on "Meaning" falls back to words
+        .onChange(of: model.semanticAvailable, initial: true) { _, ok in if !ok { mode = .text } }
         .task(id: "\(mode.rawValue)\u{1}\(query)") {
             try? await Task.sleep(nanoseconds: 250_000_000)   // debounce
             guard !Task.isCancelled else { return }

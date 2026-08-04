@@ -30,6 +30,10 @@ public struct RMe: Codable, Sendable {
     public let graphs: [RGraph]?
     public let prefs: RPrefs?
     public let authRequired: Bool?
+    /// Whether this server has an embedder configured — meaning-search is hidden without one.
+    /// Absent on servers older than the flag; treated as "available" there, so the old
+    /// behaviour (offer it, explain on 501) still applies.
+    public let semantic: Bool?
 }
 
 /// Usage statistics + the storage quota that applies to the signed-in user (GET /api/me/stats).
