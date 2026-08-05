@@ -1068,6 +1068,16 @@ final class AppModel {
             return
         }
         let title = String(format: "%.5f, %.5f", coord.latitude, coord.longitude)
+        // Stand in the same spot twice and the fix differs by a few metres, so the coordinate
+        // title never matches and a second page appears for one place. Reuse the place you
+        // already have when the new fix is within GEO_SAME_PLACE_M of its stored coordinates —
+        // no new page, no second geocoder query, and the link carries the name you gave it.
+        // Only for the address flow: "coordinates only" means this exact point, every time.
+        if resolveAddress, let near = nearbyLocationPage(coord.latitude, coord.longitude) {
+            let label = RichText.plain(doc?.nodes[near]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespaces)
+            appendGeo(to: id, source: "<a href=\"#/n/\(near)\" rel=\"noopener\">\(Self.escapeHTML(label))</a>")
+            return
+        }
         let pageID = findOrCreatePage(title: title, geo: resolveAddress ? nil : "raw")
         guard !pageID.isEmpty else { return }
         appendGeo(to: id, source: "<a href=\"#/n/\(pageID)\" rel=\"noopener\">\(Self.escapeHTML(title))</a>")
@@ -1123,6 +1133,35 @@ final class AppModel {
     /// A location page's coordinate — a "Coordinates:: lat, lon" attribute child wins
     /// (roam-atlas convention, what the web writes now), then the legacy bare-coords
     /// first bullet, then the title itself.
+    /// How far two fixes may sit apart and still count as the same place. GPS drifts by a few
+    /// metres indoors and near buildings; 25 m absorbs that without swallowing the next address
+    /// down the street.
+    static let samePlaceMetres = 25.0
+
+    /// Metres between two coordinates (haversine — the earth's curvature is irrelevant at this
+    /// scale, but it costs nothing and stays correct away from the equator).
+    static func metresBetween(_ a: (lat: Double, lon: Double), _ b: (lat: Double, lon: Double)) -> Double {
+        let r = 6_371_000.0
+        let p1 = a.lat * .pi / 180, p2 = b.lat * .pi / 180
+        let dp = p2 - p1, dl = (b.lon - a.lon) * .pi / 180
+        let h = sin(dp / 2) * sin(dp / 2) + cos(p1) * cos(p2) * sin(dl / 2) * sin(dl / 2)
+        return 2 * r * asin(min(1, sqrt(h)))
+    }
+
+    /// An existing location page whose stored coordinates are within `samePlaceMetres` of the
+    /// given fix — the nearest one, if several qualify.
+    func nearbyLocationPage(_ lat: Double, _ lon: Double) -> String? {
+        guard let doc else { return nil }
+        var best: (id: String, d: Double)?
+        for id in doc.nodes[doc.root]?.children ?? [] where doc.nodes[id]?.cal == nil {
+            guard doc.nodes[id]?.geo != "raw", let c = pageCoords(id) else { continue }
+            let d = Self.metresBetween((lat, lon), c)
+            guard d <= Self.samePlaceMetres else { continue }
+            if best == nil || d < best!.d { best = (id, d) }
+        }
+        return best?.id
+    }
+
     func pageCoords(_ id: String) -> (lat: Double, lon: Double)? {
         guard let n = doc?.nodes[id] else { return nil }
         for c in n.children ?? [] {
