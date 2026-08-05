@@ -221,7 +221,7 @@ final class ShareViewController: SLComposeServiceViewController {
                     let canonical = r.finalURL.absoluteString
                     let title = r.title ?? LinkFormat.titleFromURL(r.finalURL) ?? LinkFormat.titleFromURL(u) ?? r.finalURL.host ?? url
                     let anchor = LinkFormat.anchor(url: canonical, title: title)
-                    let noComment = comment.isEmpty || comment == url
+                    let noComment = comment.isEmpty || comment == url || comment.caseInsensitiveCompare(title) == .orderedSame
                     let body = noComment ? anchor : "\(HTMLEscape.text(comment)) \(anchor)"
                     try await Capture.send(body, html: true)
                 } else {
