@@ -128,6 +128,15 @@ enum RichEditor {
     // MARK: - source HTML → attributed
 
     static func render(_ raw: String, doc: RDoc?) -> NSAttributedString {
+        var ignored: [String: String] = [:]
+        return render(raw, doc: doc, linkIDs: &ignored)
+    }
+
+    /// `linkIDs` collects `label → page id` for every internal link this render flattens into
+    /// `[[Label]]`. The markdown carries the NAME, so without it a blur re-resolves the link by
+    /// name — and a page that was renamed in the meantime is no longer findable under the old
+    /// label, so the round-trip would silently create a duplicate and point the link at it.
+    static func render(_ raw: String, doc: RDoc?, linkIDs: inout [String: String]) -> NSAttributedString {
         let out = NSMutableAttributedString()
         let chars = Array(raw)
         var i = 0
@@ -145,6 +154,9 @@ enum RichEditor {
                     let display = plainStrip(inner)
                     // raw-on-focus: show the markdown source in the editor, editable. [[Name]] for
                     // internal links, [text](url) for external; resolved back to <a href> on blur.
+                    if href.hasPrefix("#/n/") {
+                        linkIDs[display.trimmingCharacters(in: .whitespaces)] = String(href.dropFirst(5))
+                    }
                     let raw = href.isEmpty ? display : (href.hasPrefix("#/n/") ? "[[\(display)]]" : "[\(display)](\(href))")
                     out.append(styled(raw, fmt, hl: hl, tc: tc))
                     i = end.after
@@ -321,7 +333,7 @@ struct RichTextEditor: UIViewRepresentable {
         tv.autocorrectionType = .yes
         tv.autocapitalizationType = .sentences
         tv.spellCheckingType = .yes
-        tv.attributedText = RichEditor.render(model.editText, doc: model.doc)
+        tv.attributedText = RichEditor.render(model.editText, doc: model.doc, linkIDs: &context.coordinator.linkIDs)
         tv.selectedRange = NSRange(location: tv.attributedText.length, length: 0)   // caret at end on focus
         tv.typingAttributes = [
             .font: RichEditor.font(), .foregroundColor: RichEditor.ink,
@@ -366,6 +378,9 @@ struct RichTextEditor: UIViewRepresentable {
         let id: String
         weak var textView: UITextView?
         private var lastSource: String
+        /// label → page id for the internal links this row's source carried when it was rendered,
+        /// so the blur can re-attach them by IDENTITY instead of re-resolving them by name
+        fileprivate var linkIDs: [String: String] = [:]
 
         init(model: AppModel, id: String) { self.model = model; self.id = id; self.lastSource = model.editText }
 
@@ -374,7 +389,7 @@ struct RichTextEditor: UIViewRepresentable {
         func syncExternal(_ tv: UITextView) {
             guard !tv.isFirstResponder, model.editText != lastSource else { return }
             lastSource = model.editText
-            tv.attributedText = RichEditor.render(model.editText, doc: model.doc)
+            tv.attributedText = RichEditor.render(model.editText, doc: model.doc, linkIDs: &linkIDs)
             // a row that is about to take focus starts with the caret behind its text — this is
             // what puts you after the "HH:mm " stamp of a fresh #Log entry, not in front of it
             tv.selectedRange = NSRange(location: tv.attributedText.length, length: 0)
@@ -471,7 +486,7 @@ struct RichTextEditor: UIViewRepresentable {
             // raw-on-focus: resolve THIS bullet's raw markdown ([[Name]] / [text](url)) back to stored
             // links and persist it by id — even when another row already took over (editingID moved on),
             // so leaving a bullet by tapping another one still saves the resolved link.
-            model.persistText(id, model.resolveEditorMarkdown(RichEditor.serialize(tv.attributedText)))
+            model.persistText(id, model.resolveEditorMarkdown(RichEditor.serialize(tv.attributedText), linkIDs: linkIDs))
             guard model.editingID == id else { return } // another row took over → transition, not a blur
             model.blurred()
         }
@@ -543,7 +558,7 @@ struct RichTextEditor: UIViewRepresentable {
         /// Re-render from the model's source after it changed out-of-band (geo append), caret at end.
         func reloadFromModel() {
             guard let tv = textView else { return }
-            tv.attributedText = RichEditor.render(model.editText, doc: model.doc)
+            tv.attributedText = RichEditor.render(model.editText, doc: model.doc, linkIDs: &linkIDs)
             lastSource = model.editText
             tv.selectedRange = NSRange(location: tv.attributedText.length, length: 0)
             tv.typingAttributes = [.font: RichEditor.font(), .foregroundColor: RichEditor.ink]

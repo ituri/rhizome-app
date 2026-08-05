@@ -873,10 +873,38 @@ final class AppModel {
     func renamePage(_ id: String, to title: String) {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard doc?.nodes[id] != nil, !t.isEmpty else { return }
+        let old = RichText.plain(doc?.nodes[id]?.text ?? "", doc: doc).trimmingCharacters(in: .whitespacesAndNewlines)
         let html = Self.escapeHTML(t)
         doc?.nodes[id]?.text = html
         if editingID == id { editText = html; editorReload?() }
         send([Op(kind: "update", node: id, hlc: clock.stamp(), patch: ["text": .string(html)])])
+        relabelPageLinks(id, from: old, to: t)
+    }
+
+    /// A rename follows through to every link that still carries the old title as its label
+    /// (web parity: `relabelPageLinks`). Labels someone typed by hand are left alone — only the
+    /// ones that were showing the title get updated.
+    private func relabelPageLinks(_ pageID: String, from old: String, to new: String) {
+        guard !old.isEmpty, !new.isEmpty, old != new, let doc else { return }
+        let esc = NSRegularExpression.escapedPattern(for: pageID)
+        guard let re = try? NSRegularExpression(pattern: "(<a href=\"#/n/\(esc)\"[^>]*>)([^<]*)(</a>)") else { return }
+        for (nid, node) in doc.nodes {
+            guard nid != pageID, let text = node.text, text.contains("#/n/\(pageID)\"") else { continue }
+            var result = text as NSString
+            var changed = false
+            for m in re.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length)).reversed() {
+                let label = result.substring(with: m.range(at: 2))
+                guard RichText.plain(label, doc: doc).trimmingCharacters(in: .whitespaces) == old else { continue }
+                let repl = result.substring(with: m.range(at: 1)) + Self.escapeHTML(new) + result.substring(with: m.range(at: 3))
+                result = result.replacingCharacters(in: m.range, with: repl) as NSString
+                changed = true
+            }
+            guard changed else { continue }
+            let updated = result as String
+            self.doc?.nodes[nid]?.text = updated
+            if editingID == nid { editText = updated; editorReload?() }
+            send([Op(kind: "update", node: nid, hlc: clock.stamp(), patch: ["text": .string(updated)])])
+        }
     }
 
     /// Persist a specific node's text — used on blur/transition so a bullet's resolved links get
@@ -895,7 +923,11 @@ final class AppModel {
     /// `<a href="#/n/ID">` (resolving/creating the page), `[text](url)` → an external `<a href>`,
     /// and inline `**bold**` / `*italic*` / `` `code` `` / `~~strike~~` → `<b>`/`<i>`/`<code>`/`<s>`.
     /// `((id))` is already the stored form. Mirrors the web editorInputHook, but at blur time.
-    func resolveEditorMarkdown(_ html: String) -> String {
+    /// `linkIDs` (label → page id, collected when the row was rendered) re-attaches a `[[Label]]`
+    /// to the page it actually came from. Resolving purely by name breaks the moment a page is
+    /// renamed: the old label finds nothing, `pageIdForName` creates a fresh page, and the link
+    /// silently moves to that empty duplicate — taking its map and its Location:: with it.
+    func resolveEditorMarkdown(_ html: String, linkIDs: [String: String] = [:]) -> String {
         var out = html
         // [text](url) → external link
         if let re = try? NSRegularExpression(pattern: #"\[([^\[\]\n]+)\]\((https?://[^\s()]+|www\.[^\s()]+|mailto:[^\s()]+)\)"#) {
@@ -918,7 +950,10 @@ final class AppModel {
             for m in re.matches(in: out, range: NSRange(location: 0, length: ns.length)) {
                 result += ns.substring(with: NSRange(location: last, length: m.range.location - last))
                 let name = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
-                let id = pageIdForName(name)
+                // the link this label came from wins over a by-name lookup — an untouched label
+                // must keep pointing at its page even after the page was renamed
+                let known = linkIDs[name].flatMap { doc?.nodes[$0] != nil ? $0 : nil }
+                let id = known ?? pageIdForName(name)
                 result += id.isEmpty ? "[[\(name)]]" : "<a href=\"#/n/\(id)\" rel=\"noopener\">\(name)</a>"
                 last = m.range.location + m.range.length
             }
