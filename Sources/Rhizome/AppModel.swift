@@ -1189,6 +1189,14 @@ final class AppModel {
             parentMap[newID] = pageID
             send([Op(kind: "insert", node: newID, hlc: clock.stamp(), parent: pageID, ord: 0, data: ["text": .string(Self.escapeHTML(coordsText))])])
         }
+        // A second capture at the same place gets a FRESH coordinate title (GPS jitter), so
+        // find-or-create can't match it — yet both geocode to the same address. Renaming would
+        // leave two pages with that title, and the next link resolved by name picks whichever
+        // comes first. Fold into the existing page instead (web parity: mergeLocationPage).
+        if let existing = RichText.pageID(named: address, doc: doc), existing != pageID {
+            mergeLocationPage(pageID, into: existing, address: address)
+            return
+        }
         let addr = Self.escapeHTML(address)
         doc?.nodes[pageID]?.text = addr
         send([Op(kind: "update", node: pageID, hlc: clock.stamp(), patch: ["text": .string(addr)])])
@@ -1202,6 +1210,28 @@ final class AppModel {
                 send([Op(kind: "update", node: nid, hlc: clock.stamp(), patch: ["text": .string(relabeled)])])
             }
         }
+    }
+
+    /// Fold a freshly geocoded coordinate page into the page that already carries that address:
+    /// its bullets move over, every link is re-pointed (and a raw-coordinate label becomes the
+    /// address), then the duplicate goes. The fresh fix is dropped — the target keeps its own
+    /// coordinates, exactly as the web does.
+    private func mergeLocationPage(_ pageID: String, into target: String, address: String) {
+        guard doc?.nodes[target] != nil else { return }
+        for kid in doc?.nodes[pageID]?.children ?? [] {
+            move(kid, to: target, ord: doc?.nodes[target]?.children?.count ?? 0)
+        }
+        let addr = Self.escapeHTML(address)
+        let needle = "#/n/\(pageID)\""
+        for nid in (doc?.nodes.keys).map(Array.init) ?? [] {
+            guard let t = doc?.nodes[nid]?.text, t.contains(needle) else { continue }
+            let moved = t.replacingOccurrences(of: needle, with: "#/n/\(target)\"")
+            let next = relabelCoordLinks(moved, pageID: target, label: addr)
+            doc?.nodes[nid]?.text = next
+            if editingID == nid { editText = next; editorReload?() }
+            send([Op(kind: "update", node: nid, hlc: clock.stamp(), patch: ["text": .string(next)])])
+        }
+        delete(pageID)
     }
 
     private func relabelCoordLinks(_ html: String, pageID: String, label: String) -> String {
